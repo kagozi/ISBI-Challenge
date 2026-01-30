@@ -2,6 +2,7 @@
 WBCBench 2026: Complete Improved Training Pipeline
 ==================================================
 Includes: Denoising, Focal Loss, Mixup, TTA, Class Weights, Visualizations
+# main.py
 """
 
 import os
@@ -158,7 +159,7 @@ class_weights = compute_class_weights(train_df_expanded, num_classes, device)
 
 def get_loss_fn(loss_name, num_classes):
     """Get loss function"""
-    if loss_name == 'bce':
+    if loss_name == 'ce':
         return nn.CrossEntropyLoss()
     elif loss_name == 'focal':
         return FocalLoss(alpha=class_weights, gamma=2)
@@ -264,24 +265,6 @@ print(f"  Test:  {len(test_dataset):,}\n")
 # ============================================================================
 # 5. MODEL DEFINITIONS
 # ============================================================================
-
-class SEBlock(nn.Module):
-    def __init__(self, channels, reduction=16):
-        super().__init__()
-        self.squeeze = nn.AdaptiveAvgPool2d(1)
-        self.excitation = nn.Sequential(
-            nn.Linear(channels, channels // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(channels // reduction, channels, bias=False),
-            nn.Sigmoid()
-        )
-    
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.squeeze(x).view(b, c)
-        y = self.excitation(y).view(b, c, 1, 1)
-        return x * y.expand_as(x)
-
 
 class ClassificationHead(nn.Module):
     def __init__(self, in_dim, num_classes, dropout=0.4):
@@ -648,8 +631,8 @@ def train_model(config, train_loader, val_loader, test_loader, num_classes,
 def main():
 
     configs = [
-        {'model': 'SwinTransformerImage', 'loss': 'bce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-        {'model': 'HybridSwin', 'loss': 'bce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+        {'model': 'SwinTransformerImage', 'loss': 'ce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+        {'model': 'HybridSwin', 'loss': 'ce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
     ]
 
 
