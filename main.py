@@ -29,7 +29,7 @@ warnings.filterwarnings('ignore')
 # 1. DATA LOADING & PREPARATION
 # ============================================================================
 
-DATA_PATH = './data'
+DATA_PATH = '../data'
 PHASE1_IMG_DIR = os.path.join(DATA_PATH, "phase1")
 PHASE2_TRAIN_IMG_DIR = os.path.join(DATA_PATH, "phase2/train")
 PHASE2_EVAL_IMG_DIR = os.path.join(DATA_PATH, "phase2/eval")
