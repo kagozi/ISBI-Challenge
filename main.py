@@ -638,43 +638,6 @@ def train_model(config, train_loader, val_loader, test_loader, num_classes,
     
     return model, history, submission_df
 
-
-# ============================================================================
-# 11. RUN TRAINING
-# ============================================================================
-
-configs = [
-    {'model': 'SwinTransformerImage', 'loss': 'bce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'HybridSwin', 'loss': 'bce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-]
-
-
-results = {}
-for config in configs:
-    try:
-        model, history, submission = train_model(
-            config, train_loader, val_loader, test_loader, 
-            num_classes, label2name, device, class_weights)
-        results[config['model']] = {
-            'model': model, 'history': history, 
-            'submission': submission, 'best_val_f1': max(history['val_f1'])
-        }
-    except Exception as e:
-        print(f"\n❌ Error training {config['model']}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-
-print("\n" + "="*70)
-print("TRAINING SUMMARY")
-print("="*70)
-if results:
-    for name, result in results.items():
-        print(f"{name:30s} | Best Val F1: {result['best_val_f1']:.4f}")
-    best = max(results, key=lambda k: results[k]['best_val_f1'])
-    print(f"\n🏆 Best Single Model: {best} (F1: {results[best]['best_val_f1']:.4f})")
-print("="*70)
-
-
 # ============================================================================
 # 12. ENSEMBLE PREDICTIONS
 # ============================================================================
@@ -838,61 +801,104 @@ def evaluate_ensemble_on_validation(models_dict, val_loader, device, weights=Non
 
 
 # ============================================================================
-# 13. CREATE AND EVALUATE ENSEMBLE
+# 11. RUN TRAINING
 # ============================================================================
 
-if results and len(results) >= 2:
+def main():
+
+    configs = [
+        {'model': 'SwinTransformerImage', 'loss': 'bce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+        {'model': 'HybridSwin', 'loss': 'bce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    ]
+
+
+    results = {}
+    for config in configs:
+        try:
+            model, history, submission = train_model(
+                config, train_loader, val_loader, test_loader, 
+                num_classes, label2name, device, class_weights)
+            results[config['model']] = {
+                'model': model, 'history': history, 
+                'submission': submission, 'best_val_f1': max(history['val_f1'])
+            }
+        except Exception as e:
+            print(f"\n❌ Error training {config['model']}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
     print("\n" + "="*70)
-    print("BUILDING ENSEMBLE FROM TRAINED MODELS")
+    print("TRAINING SUMMARY")
     print("="*70)
-    
-    # Prepare models dictionary
-    ensemble_models = {name: result['model'] for name, result in results.items()}
-    
-    # Evaluate ensemble on validation set first
-    ensemble_val_f1 = evaluate_ensemble_on_validation(
-        ensemble_models, val_loader, device, weights=None
-    )
-    
-    # Generate ensemble predictions on test set
-    ensemble_submission = ensemble_predictions(
-        ensemble_models, 
-        test_loader, 
-        device, 
-        label2name,
-        output_path='submission_ensemble.csv',
-        weights=None  # Uses validation F1 scores as weights
-    )
-    
-    # Add ensemble to results
-    results['Ensemble'] = {
-        'submission': ensemble_submission,
-        'best_val_f1': ensemble_val_f1
-    }
-    
-    print("\n" + "="*70)
-    print("FINAL RESULTS SUMMARY")
-    print("="*70)
-    for name, result in results.items():
-        if 'best_val_f1' in result:
-            print(f"{name:30s} | Validation F1: {result['best_val_f1']:.4f}")
-    
-    best_final = max(results, key=lambda k: results[k]['best_val_f1'])
-    print(f"\n🏆 BEST OVERALL: {best_final} (F1: {results[best_final]['best_val_f1']:.4f})")
-    print("="*70)
-    
-    print("\n✅ ALL SUBMISSIONS GENERATED:")
-    for name in results.keys():
-        if name == 'Ensemble':
-            print(f"  • submission_ensemble.csv (Ensemble of all models)")
-        else:
-            print(f"  • submission_{name}.csv")
-    
-    print("\n💡 RECOMMENDATION: Submit 'submission_ensemble.csv' for best results!")
+    if results:
+        for name, result in results.items():
+            print(f"{name:30s} | Best Val F1: {result['best_val_f1']:.4f}")
+        best = max(results, key=lambda k: results[k]['best_val_f1'])
+        print(f"\n🏆 Best Single Model: {best} (F1: {results[best]['best_val_f1']:.4f})")
     print("="*70)
 
-elif results:
-    print("\n⚠️ Only one model trained. Need at least 2 models for ensemble.")
-    print("   Using single model submission.")
-else:
-    print("\n❌ No models trained successfully. Cannot create ensemble.")
+
+
+
+    # ============================================================================
+    # 13. CREATE AND EVALUATE ENSEMBLE
+    # ============================================================================
+
+    if results and len(results) >= 2:
+        print("\n" + "="*70)
+        print("BUILDING ENSEMBLE FROM TRAINED MODELS")
+        print("="*70)
+        
+        # Prepare models dictionary
+        ensemble_models = {name: result['model'] for name, result in results.items()}
+        
+        # Evaluate ensemble on validation set first
+        ensemble_val_f1 = evaluate_ensemble_on_validation(
+            ensemble_models, val_loader, device, weights=None
+        )
+        
+        # Generate ensemble predictions on test set
+        ensemble_submission = ensemble_predictions(
+            ensemble_models, 
+            test_loader, 
+            device, 
+            label2name,
+            output_path='submission_ensemble.csv',
+            weights=None  # Uses validation F1 scores as weights
+        )
+        
+        # Add ensemble to results
+        results['Ensemble'] = {
+            'submission': ensemble_submission,
+            'best_val_f1': ensemble_val_f1
+        }
+        
+        print("\n" + "="*70)
+        print("FINAL RESULTS SUMMARY")
+        print("="*70)
+        for name, result in results.items():
+            if 'best_val_f1' in result:
+                print(f"{name:30s} | Validation F1: {result['best_val_f1']:.4f}")
+        
+        best_final = max(results, key=lambda k: results[k]['best_val_f1'])
+        print(f"\n🏆 BEST OVERALL: {best_final} (F1: {results[best_final]['best_val_f1']:.4f})")
+        print("="*70)
+        
+        print("\n✅ ALL SUBMISSIONS GENERATED:")
+        for name in results.keys():
+            if name == 'Ensemble':
+                print(f"  • submission_ensemble.csv (Ensemble of all models)")
+            else:
+                print(f"  • submission_{name}.csv")
+        
+        print("\n💡 RECOMMENDATION: Submit 'submission_ensemble.csv' for best results!")
+        print("="*70)
+
+    elif results:
+        print("\n⚠️ Only one model trained. Need at least 2 models for ensemble.")
+        print("   Using single model submission.")
+    else:
+        print("\n❌ No models trained successfully. Cannot create ensemble.")
+
+if __name__ == "__main__":
+    main()
