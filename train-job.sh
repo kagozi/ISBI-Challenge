@@ -34,7 +34,7 @@ nvidia-smi
 # ---------------------------------------------------------------------------
 
 eval "$(mamba shell hook --shell bash)"
-mamba activate slt-multistream
+mamba activate ecg
 
 
 python main.py
