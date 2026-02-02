@@ -775,17 +775,17 @@ def train_model(config, train_loader, val_loader, test_loader, num_classes,
 def main():
 
     configs = [
-    {'model': 'SwinTransformer', 'loss': 'ce', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'HybridSwin', 'loss': 'ce', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'EfficientNetImage','loss': 'ce','lr': 1e-4, 'epochs': 1, 'weight_decay': 1e-4,'scheduler': 'cosine'},
+    {'model': 'SwinTransformer', 'loss': 'ce', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'HybridSwin', 'loss': 'ce', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'EfficientNetImage','loss': 'ce','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
 
-    {'model': 'SwinTransformer', 'loss': 'focal', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'HybridSwin', 'loss': 'focal', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'EfficientNetImage','loss': 'focal','lr': 1e-4, 'epochs': 1, 'weight_decay': 1e-4,'scheduler': 'cosine'},
+    {'model': 'SwinTransformer', 'loss': 'focal', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'HybridSwin', 'loss': 'focal', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'EfficientNetImage','loss': 'focal','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
 
-    {'model': 'SwinTransformer', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'HybridSwin', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'EfficientNetImage','loss': 'focal_weighted','lr': 1e-4, 'epochs': 1, 'weight_decay': 1e-4,'scheduler': 'cosine'},
+    {'model': 'SwinTransformer', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'HybridSwin', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'EfficientNetImage','loss': 'focal_weighted','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
     
     ]
 
