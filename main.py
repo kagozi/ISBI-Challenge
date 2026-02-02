@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
 from PIL import Image
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -115,7 +116,7 @@ print(f"Test set:         {len(test_df):6,} images\n")
 # 2. FOCAL LOSS FOR CLASS IMBALANCE
 # ============================================================================
 
-class FocalLoss(nn.Module):
+class FocalLossWithClassWeights(nn.Module):
     def __init__(self, alpha=None, gamma=2, reduction='mean'):
         super().__init__()
         self.alpha = alpha
@@ -132,6 +133,20 @@ class FocalLoss(nn.Module):
         if self.reduction == 'mean':
             return focal_loss.mean()
         return focal_loss
+
+
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=0.25, gamma=2.0):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, inputs, targets):
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
+        return focal_loss.mean()
+
 
 
 def compute_class_weights(train_df, num_classes, device):
@@ -154,7 +169,43 @@ def compute_class_weights(train_df, num_classes, device):
     
     return weights
 
-class_weights = compute_class_weights(train_df_expanded, num_classes, device)
+def compute_custom_class_weights(num_classes, device):
+    """
+    Set custom class weights based on domain knowledge.
+    Focus more on rare/hard-to-classify cells.
+    """
+    # Initialize all weights to 0.25
+    weights = torch.ones(num_classes, dtype=torch.float32) * 0.25
+    
+    # Custom weights for specific classes
+    custom_weights = {
+        'BNE': 0.75,
+        'MMY': 0.6,
+        'PC': 0.6,
+        'PMY': 0.75,
+        'VLY': 0.75,
+    }
+    
+    # Apply custom weights
+    for class_name, weight in custom_weights.items():
+        class_id = name2label[class_name]
+        weights[class_id] = weight
+    
+    weights = weights.to(device)
+    
+    print("="*70)
+    print("CUSTOM CLASS WEIGHTS (Domain Knowledge)")
+    print("="*70)
+    for i in range(num_classes):
+        print(f"{label2name[i]:20s} | Weight: {weights[i]:.4f}")
+    print("="*70 + "\n")
+    
+    return weights
+
+
+class_weights = compute_custom_class_weights(num_classes, device)
+
+# class_weights = compute_class_weights(train_df_expanded, num_classes, device)
 
 
 def get_loss_fn(loss_name, num_classes):
@@ -162,7 +213,9 @@ def get_loss_fn(loss_name, num_classes):
     if loss_name == 'ce':
         return nn.CrossEntropyLoss()
     elif loss_name == 'focal':
-        return FocalLoss(alpha=class_weights, gamma=2)
+        return FocalLoss()
+    elif loss_name == 'focal_weighted':
+        return FocalLossWithClassWeights(alpha=class_weights)
     else:
         raise ValueError(f"Unknown loss: {loss_name}")
 
@@ -244,10 +297,38 @@ class BloodDataset(Dataset):
         return image, label
 
 
+train_transforms = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomRotation(30),
+    transforms.RandomAffine(degrees=0, shear=15, scale=(0.8, 1.2)),
+    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+val_test_transforms = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
 # Create datasets with improved transforms
-train_dataset = BloodDataset(train_df_split, transform=get_train_transform_with_denoising())
-val_dataset = BloodDataset(val_df_split, transform=get_val_transform())
-test_dataset = BloodDataset(test_df, transform=get_val_transform(), is_test=True)
+# train_dataset = BloodDataset(train_df_split, transform=get_train_transform_with_denoising())
+# val_dataset = BloodDataset(val_df_split, transform=get_val_transform())
+# test_dataset = BloodDataset(test_df, transform=get_val_transform(), is_test=True)
+
+# train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, 
+#                           num_workers=4, pin_memory=True, drop_last=True)
+# val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, 
+#                         num_workers=4, pin_memory=True)
+# test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, 
+#                          num_workers=4, pin_memory=True)
+train_dataset = BloodDataset(train_df_split, transform=train_transforms)
+val_dataset = BloodDataset(val_df_split,  transform=val_test_transforms)
+test_dataset = BloodDataset(test_df,  transform=val_test_transforms, is_test=True)
 
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, 
                           num_workers=4, pin_memory=True, drop_last=True)
@@ -283,7 +364,7 @@ class ClassificationHead(nn.Module):
         return self.head(x)
 
 
-class SwinTransformerImage(nn.Module):
+class SwinTransformer(nn.Module):
     def __init__(self, num_classes, dropout=0.4, pretrained=True):
         super().__init__()
         self.backbone = timm.create_model("swin_base_patch4_window7_224", 
@@ -293,6 +374,7 @@ class SwinTransformerImage(nn.Module):
     
     def forward(self, x):
         return self.classifier(self.backbone(x))
+
 
 
 # SE Attention Block
@@ -312,6 +394,7 @@ class SEBlock(nn.Module):
         scale = self.global_avg_pool(x).view(batch, channels)
         scale = self.fc(scale).view(batch, channels, 1, 1)
         return x * scale
+        
 
 class HybridSwin(nn.Module):
     def __init__(self, num_classes, dropout=0.4, pretrained=True):
@@ -342,14 +425,37 @@ class HybridSwin(nn.Module):
         x = self.swin(x)  # Pass to Swin Transformer
         x = self.fc(x)  # Final classification layer
         return x
+        
+
+class EfficientNet(nn.Module):
+    """EfficientNetV2 for image classification."""
+    def __init__(self, num_classes, dropout=0.4, pretrained=True):
+        super().__init__()
+        self.backbone = timm.create_model(
+            "tf_efficientnetv2_m",
+            pretrained=pretrained,
+            num_classes=0,
+            in_chans=3
+        )
+        num_features = self.backbone.num_features
+        self.classifier = ClassificationHead(num_features, num_classes, dropout)
+        n_params = sum(p.numel() for p in self.parameters())
+        print(f"  EfficientNetImage: {n_params/1e6:.1f}M params")
+
+    def forward(self, x):
+        features = self.backbone(x)
+        return self.classifier(features)
+
 
 
 def get_model(model_name, num_classes, device):
     print(f"\n{'='*60}\nInitializing {model_name}\n{'='*60}")
-    if model_name == 'SwinTransformerImage':
-        model = SwinTransformerImage(num_classes=num_classes)
+    if model_name == 'SwinTransformer':
+        model = SwinTransformer(num_classes=num_classes)
     elif model_name == 'HybridSwin':
         model = HybridSwin(num_classes=num_classes)
+    elif  model_name == 'EfficientNet':
+        model = EfficientNet(num_classes=num_classes)
     else:
         raise ValueError(f"Unknown model: {model_name}")
     return model.to(device)
@@ -457,6 +563,39 @@ def predict_with_tta(model, images, device, n_tta=5):
     return torch.stack(predictions).mean(dim=0).argmax(dim=1)
 
 
+
+def predict_proba_with_tta(model, images, device, n_tta=5):
+    """
+    Returns averaged class probabilities over TTA transforms.
+    """
+    model.eval()
+    preds = []
+
+    with torch.no_grad():
+        # 1) identity
+        preds.append(torch.softmax(model(images), dim=1))
+
+        if n_tta > 1:
+            # 2) horizontal flip
+            preds.append(torch.softmax(model(torch.flip(images, dims=[3])), dim=1))
+
+        if n_tta > 2:
+            # 3) vertical flip
+            preds.append(torch.softmax(model(torch.flip(images, dims=[2])), dim=1))
+
+        if n_tta > 3:
+            # 4) rotate 90
+            preds.append(torch.softmax(model(torch.rot90(images, k=1, dims=[2, 3])), dim=1))
+
+        if n_tta > 4:
+            # 5) rotate -90
+            preds.append(torch.softmax(model(torch.rot90(images, k=3, dims=[2, 3])), dim=1))
+
+    # shape: (n_tta, B, C) -> (B, C)
+    return torch.stack(preds, dim=0).mean(dim=0)
+
+
+
 def generate_submission_with_tta(model, test_loader, device, label2name, output_path, use_tta=True):
     model.eval()
     predictions, filenames = [], []
@@ -474,17 +613,21 @@ def generate_submission_with_tta(model, test_loader, device, label2name, output_
     
     pred_labels = [label2name[pred] for pred in predictions]
     submission_df = pd.DataFrame({'ID': filenames, 'Target': pred_labels})
+    # Move to another directory to avoid overwriting
+    os.makedirs('submissions_run_1', exist_ok=True)
+    output_path = os.path.join('submissions_run_1', output_path)
     submission_df.to_csv(output_path, index=False)
     print(f"\n✓ Submission saved: {output_path}")
     print(submission_df.head(10))
     return submission_df
 
 
+
+
 # ============================================================================
 # 9. VISUALIZATION FUNCTIONS
 # ============================================================================
-
-def plot_training_curves(history, model_name, save_dir='plots'):
+def plot_training_curves(history, model_name, loss_function, save_dir='plots_run_1'):
     os.makedirs(save_dir, exist_ok=True)
     epochs = range(1, len(history['train_loss']) + 1)
     
@@ -519,12 +662,12 @@ def plot_training_curves(history, model_name, save_dir='plots'):
         ax.axvline(x=best_epoch, color='g', linestyle='--', alpha=0.7)
     
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f'{model_name}_training_curves.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, f'{model_name}_{loss_function}_training_curves.png'), dpi=300, bbox_inches='tight')
     plt.close()
     print(f"✓ Training curves saved")
 
 
-def plot_confusion_matrix(y_true, y_pred, class_names, model_name, save_dir='plots'):
+def plot_confusion_matrix(y_true, y_pred, class_names, model_name, loss_function, save_dir='plots'):
     os.makedirs(save_dir, exist_ok=True)
     cm = confusion_matrix(y_true, y_pred)
     cm_percent = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
@@ -546,7 +689,7 @@ def plot_confusion_matrix(y_true, y_pred, class_names, model_name, save_dir='plo
     plt.setp(ax2.get_xticklabels(), rotation=45, ha='right')
     
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f'{model_name}_confusion_matrix.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, f'{model_name}_{loss_function}_confusion_matrix.png'), dpi=300, bbox_inches='tight')
     plt.close()
     print(f"✓ Confusion matrix saved")
 
@@ -556,8 +699,9 @@ def plot_confusion_matrix(y_true, y_pred, class_names, model_name, save_dir='plo
 # ============================================================================
 
 def train_model(config, train_loader, val_loader, test_loader, num_classes, 
-                label2name, device, class_weights, save_dir='models'):
+                label2name, device, class_weights, save_dir='models_run_1'):
     model_name = config['model']
+    loss_function = config['loss']
     print(f"\n{'#'*70}\n# Training: {model_name}\n{'#'*70}\n")
     
     model = get_model(model_name, num_classes, device)
@@ -607,15 +751,15 @@ def train_model(config, train_loader, val_loader, test_loader, num_classes,
     model.load_state_dict(checkpoint['model_state_dict'])
     
     # Generate visualizations
-    plot_training_curves(history, model_name)
+    plot_training_curves(history, model_name, loss_function)
     _, _, _, val_preds, val_labels = validate(model, val_loader, criterion, device, "FINAL")
-    plot_confusion_matrix(val_labels, val_preds, class_names, model_name)
+    plot_confusion_matrix(val_labels, val_preds, class_names, model_name, loss_function)
     
     print("\n" + "="*60)
     print(classification_report(val_labels, val_preds, target_names=class_names))
     
     # Generate submission with TTA
-    submission_path = f"submission_{model_name}.csv"
+    submission_path = f"submission_{model_name}_{loss_function}.csv"
     submission_df = generate_submission_with_tta(model, test_loader, device, label2name, 
                                                  submission_path, use_tta=True)
     
@@ -631,10 +775,19 @@ def train_model(config, train_loader, val_loader, test_loader, num_classes,
 def main():
 
     configs = [
-        {'model': 'SwinTransformerImage', 'loss': 'ce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-        {'model': 'HybridSwin', 'loss': 'ce', 'lr': 5e-5, 'epochs': 45, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    ]
+    {'model': 'SwinTransformer', 'loss': 'ce', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'HybridSwin', 'loss': 'ce', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'EfficientNetImage','loss': 'ce','lr': 1e-4, 'epochs': 1, 'weight_decay': 1e-4,'scheduler': 'cosine'},
 
+    {'model': 'SwinTransformer', 'loss': 'focal', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'HybridSwin', 'loss': 'focal', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'EfficientNetImage','loss': 'focal','lr': 1e-4, 'epochs': 1, 'weight_decay': 1e-4,'scheduler': 'cosine'},
+
+    {'model': 'SwinTransformer', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'HybridSwin', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 1, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
+    {'model': 'EfficientNetImage','loss': 'focal_weighted','lr': 1e-4, 'epochs': 1, 'weight_decay': 1e-4,'scheduler': 'cosine'},
+    
+    ]
 
     results = {}
     for config in configs:
@@ -666,162 +819,298 @@ def main():
     # 12. ENSEMBLE PREDICTIONS
     # ============================================================================
 
-    def ensemble_predictions(models_dict, test_loader, device, label2name, 
-                            output_path='submission_ensemble.csv', weights=None):
+    # def ensemble_predictions(models_dict, test_loader, device, label2name, 
+    #                         output_path='submission_ensemble.csv', weights=None):
+    #     """
+    #     Ensemble multiple models with optional weighting.
+        
+    #     Args:
+    #         models_dict: Dict of {model_name: model}
+    #         test_loader: Test DataLoader
+    #         device: torch device
+    #         label2name: Dict mapping label_id to class name
+    #         output_path: Path to save ensemble submission
+    #         weights: Optional dict of {model_name: weight}. If None, uses validation F1 scores.
+        
+    #     Returns:
+    #         submission_df: DataFrame with ensemble predictions
+    #     """
+    #     print("\n" + "="*70)
+    #     print("CREATING ENSEMBLE PREDICTIONS")
+    #     print("="*70)
+        
+    #     # Collect predictions from all models
+    #     all_predictions = {name: [] for name in models_dict.keys()}
+    #     filenames = []
+        
+    #     for images, ids in tqdm(test_loader, desc="Ensemble inference"):
+    #         images = images.to(device)
+            
+    #         if len(filenames) == 0:
+    #             filenames.extend(ids)
+            
+    #         for model_name, model in models_dict.items():
+    #             model.eval()
+    #             with torch.no_grad():
+    #                 # Use TTA for ensemble
+    #                 outputs = predict_with_tta(model, images, device, n_tta=5)
+    #                 # Get probabilities instead of hard predictions
+    #                 model.eval()
+    #                 with torch.no_grad():
+    #                     raw_outputs = model(images)
+    #                     probs = torch.softmax(raw_outputs, dim=1)
+    #                 all_predictions[model_name].append(probs.cpu())
+        
+    #     # Concatenate all predictions
+    #     for model_name in models_dict.keys():
+    #         all_predictions[model_name] = torch.cat(all_predictions[model_name], dim=0)
+        
+    #     # Determine weights
+    #     if weights is None:
+    #         # Use validation F1 scores as weights
+    #         total_f1 = sum(results[name]['best_val_f1'] for name in models_dict.keys())
+    #         weights = {name: results[name]['best_val_f1'] / total_f1 
+    #                 for name in models_dict.keys()}
+        
+    #     print("\nEnsemble Weights:")
+    #     for name, weight in weights.items():
+    #         print(f"  {name:30s} : {weight:.4f}")
+        
+    #     # Weighted ensemble
+    #     ensemble_probs = torch.zeros_like(all_predictions[list(models_dict.keys())[0]])
+    #     for model_name, probs in all_predictions.items():
+    #         weight = weights.get(model_name, 1.0 / len(models_dict))
+    #         ensemble_probs += weight * probs
+        
+    #     # Get final predictions
+    #     final_predictions = ensemble_probs.argmax(dim=1).numpy()
+    #     pred_labels = [label2name[pred] for pred in final_predictions]
+        
+    #     # Create submission
+    #     submission_df = pd.DataFrame({
+    #         'ID': filenames,
+    #         'Target': pred_labels
+    #     })
+        
+    #     submission_df.to_csv(output_path, index=False)
+        
+    #     print(f"\n✓ Ensemble submission saved: {output_path}")
+    #     print(f"  Total predictions: {len(submission_df):,}")
+    #     print(f"  Ensemble of {len(models_dict)} models")
+    #     print("\nSample predictions:")
+    #     print(submission_df.head(10))
+    #     print("="*70)
+        
+    #     return submission_df
+    
+    def ensemble_predictions(models_dict, test_loader, device, label2name,
+                            output_path='submission_ensemble.csv',
+                            weights=None,
+                            use_tta=True,
+                            n_tta=5):
         """
-        Ensemble multiple models with optional weighting.
-        
-        Args:
-            models_dict: Dict of {model_name: model}
-            test_loader: Test DataLoader
-            device: torch device
-            label2name: Dict mapping label_id to class name
-            output_path: Path to save ensemble submission
-            weights: Optional dict of {model_name: weight}. If None, uses validation F1 scores.
-        
-        Returns:
-            submission_df: DataFrame with ensemble predictions
+        Ensemble multiple models by averaging probabilities (optionally with weights).
+        Uses TTA probabilities if use_tta=True.
+        Correctly collects filenames for ALL batches.
         """
         print("\n" + "="*70)
-        print("CREATING ENSEMBLE PREDICTIONS")
+        print("CREATING ENSEMBLE PREDICTIONS (FIXED)")
         print("="*70)
-        
-        # Collect predictions from all models
-        all_predictions = {name: [] for name in models_dict.keys()}
-        filenames = []
-        
+
+        model_names = list(models_dict.keys())
+
+        # If no weights passed, fall back to uniform
+        if weights is None:
+            weights = {name: 1.0 / len(model_names) for name in model_names}
+
+        # Normalize weights just in case
+        s = sum(weights.get(n, 0.0) for n in model_names)
+        if s <= 0:
+            weights = {name: 1.0 / len(model_names) for name in model_names}
+        else:
+            weights = {name: weights.get(name, 0.0) / s for name in model_names}
+
+        print("\nEnsemble Weights:")
+        for name in model_names:
+            print(f"  {name:30s} : {weights[name]:.4f}")
+
+        all_ids = []
+        all_probs = None  # will become (N, C)
+
         for images, ids in tqdm(test_loader, desc="Ensemble inference"):
             images = images.to(device)
-            
-            if len(filenames) == 0:
-                filenames.extend(ids)
-            
-            for model_name, model in models_dict.items():
-                model.eval()
-                with torch.no_grad():
-                    # Use TTA for ensemble
-                    outputs = predict_with_tta(model, images, device, n_tta=5)
-                    # Get probabilities instead of hard predictions
+
+            # ✅ FIX: collect ids for every batch
+            all_ids.extend(list(ids))
+
+            batch_ensemble = None  # (B, C)
+
+            for name in model_names:
+                model = models_dict[name]
+                w = weights[name]
+
+                if use_tta:
+                    probs = predict_proba_with_tta(model, images, device, n_tta=n_tta)
+                else:
                     model.eval()
                     with torch.no_grad():
-                        raw_outputs = model(images)
-                        probs = torch.softmax(raw_outputs, dim=1)
-                    all_predictions[model_name].append(probs.cpu())
-        
-        # Concatenate all predictions
-        for model_name in models_dict.keys():
-            all_predictions[model_name] = torch.cat(all_predictions[model_name], dim=0)
-        
-        # Determine weights
-        if weights is None:
-            # Use validation F1 scores as weights
-            total_f1 = sum(results[name]['best_val_f1'] for name in models_dict.keys())
-            weights = {name: results[name]['best_val_f1'] / total_f1 
-                    for name in models_dict.keys()}
-        
-        print("\nEnsemble Weights:")
-        for name, weight in weights.items():
-            print(f"  {name:30s} : {weight:.4f}")
-        
-        # Weighted ensemble
-        ensemble_probs = torch.zeros_like(all_predictions[list(models_dict.keys())[0]])
-        for model_name, probs in all_predictions.items():
-            weight = weights.get(model_name, 1.0 / len(models_dict))
-            ensemble_probs += weight * probs
-        
-        # Get final predictions
-        final_predictions = ensemble_probs.argmax(dim=1).numpy()
-        pred_labels = [label2name[pred] for pred in final_predictions]
-        
-        # Create submission
-        submission_df = pd.DataFrame({
-            'ID': filenames,
-            'Target': pred_labels
-        })
-        
+                        probs = torch.softmax(model(images), dim=1)
+
+                # Weighted sum over models
+                if batch_ensemble is None:
+                    batch_ensemble = w * probs
+                else:
+                    batch_ensemble += w * probs
+
+            # Move to CPU and accumulate
+            batch_ensemble = batch_ensemble.detach().cpu()
+
+            if all_probs is None:
+                all_probs = batch_ensemble
+            else:
+                all_probs = torch.cat([all_probs, batch_ensemble], dim=0)
+
+        # Final predictions
+        final_preds = all_probs.argmax(dim=1).numpy()
+        pred_labels = [label2name[int(p)] for p in final_preds]
+
+        # ✅ Now IDs length matches predictions length
+        assert len(all_ids) == len(pred_labels), f"IDs ({len(all_ids)}) != preds ({len(pred_labels)})"
+
+        submission_df = pd.DataFrame({"ID": all_ids, "Target": pred_labels})
         submission_df.to_csv(output_path, index=False)
-        
+
         print(f"\n✓ Ensemble submission saved: {output_path}")
         print(f"  Total predictions: {len(submission_df):,}")
-        print(f"  Ensemble of {len(models_dict)} models")
+        print(f"  Ensemble of {len(model_names)} models")
         print("\nSample predictions:")
         print(submission_df.head(10))
         print("="*70)
-        
+
         return submission_df
 
 
-    def evaluate_ensemble_on_validation(models_dict, val_loader, device, weights=None):
-        """
-        Evaluate ensemble performance on validation set.
-        """
+
+    # def evaluate_ensemble_on_validation(models_dict, val_loader, device, weights=None):
+    #     """
+    #     Evaluate ensemble performance on validation set.
+    #     """
+    #     print("\n" + "="*70)
+    #     print("EVALUATING ENSEMBLE ON VALIDATION SET")
+    #     print("="*70)
+        
+    #     all_predictions = {name: [] for name in models_dict.keys()}
+        
+    #     all_labels = []
+        
+    #     for images, labels in tqdm(val_loader, desc="Validation ensemble"):
+    #         images = images.to(device)
+    #         all_labels.extend(labels.numpy())
+            
+    #         for model_name, model in models_dict.items():
+    #             model.eval()
+    #             with torch.no_grad():
+    #                 outputs = model(images)
+    #                 probs = torch.softmax(outputs, dim=1)
+    #                 all_predictions[model_name].append(probs.cpu())
+        
+    #     # Concatenate
+    #     for model_name in models_dict.keys():
+    #         all_predictions[model_name] = torch.cat(all_predictions[model_name], dim=0)
+        
+    #     # Determine weights
+    #     if weights is None:
+    #         total_f1 = sum(results[name]['best_val_f1'] for name in models_dict.keys())
+    #         weights = {name: results[name]['best_val_f1'] / total_f1 
+    #                 for name in models_dict.keys()}
+        
+    #     # Weighted ensemble
+    #     ensemble_probs = torch.zeros_like(all_predictions[list(models_dict.keys())[0]])
+    #     for model_name, probs in all_predictions.items():
+    #         weight = weights.get(model_name, 1.0 / len(models_dict))
+    #         ensemble_probs += weight * probs
+        
+    #     # Get predictions
+    #     ensemble_preds = ensemble_probs.argmax(dim=1).numpy()
+        
+    #     # Calculate metrics
+    #     ensemble_acc = accuracy_score(all_labels, ensemble_preds)
+    #     ensemble_f1 = f1_score(all_labels, ensemble_preds, average='macro')
+        
+    #     print(f"\n📊 Ensemble Validation Results:")
+    #     print(f"  Accuracy: {ensemble_acc:.4f}")
+    #     print(f"  Macro F1: {ensemble_f1:.4f}")
+        
+    #     print(f"\n📈 Comparison with Individual Models:")
+    #     for name in models_dict.keys():
+    #         individual_f1 = results[name]['best_val_f1']
+    #         improvement = ensemble_f1 - individual_f1
+    #         print(f"  {name:30s} : F1 = {individual_f1:.4f} | "
+    #             f"Ensemble gain = {improvement:+.4f}")
+        
+    #     print(f"\n🎯 Best Ensemble Improvement: {ensemble_f1 - max(results[name]['best_val_f1'] for name in models_dict.keys()):+.4f}")
+        
+    #     # Classification report
+    #     print("\nEnsemble Classification Report:")
+    #     print("="*70)
+    #     print(classification_report(all_labels, ensemble_preds, target_names=class_names))
+        
+    #     # Confusion matrix
+    #     plot_confusion_matrix(all_labels, ensemble_preds, class_names, "Ensemble", save_dir='plots')
+        
+    #     print("="*70)
+        
+    #     return ensemble_f1
+    def evaluate_ensemble_on_validation(models_dict, val_loader, device, weights=None, use_tta=False, n_tta=5):
         print("\n" + "="*70)
-        print("EVALUATING ENSEMBLE ON VALIDATION SET")
+        print("EVALUATING ENSEMBLE ON VALIDATION SET (FIXED)")
         print("="*70)
-        
-        all_predictions = {name: [] for name in models_dict.keys()}
+
+        model_names = list(models_dict.keys())
+
+        if weights is None:
+            weights = {name: 1.0 / len(model_names) for name in model_names}
+        s = sum(weights.get(n, 0.0) for n in model_names)
+        weights = {n: weights.get(n, 0.0) / s for n in model_names}
+
         all_labels = []
-        
+        all_probs = []
+
         for images, labels in tqdm(val_loader, desc="Validation ensemble"):
             images = images.to(device)
-            
-            if len(all_labels) == 0:
-                all_labels.extend(labels.numpy())
-            
-            for model_name, model in models_dict.items():
-                model.eval()
-                with torch.no_grad():
-                    outputs = model(images)
-                    probs = torch.softmax(outputs, dim=1)
-                    all_predictions[model_name].append(probs.cpu())
-        
-        # Concatenate
-        for model_name in models_dict.keys():
-            all_predictions[model_name] = torch.cat(all_predictions[model_name], dim=0)
-        
-        # Determine weights
-        if weights is None:
-            total_f1 = sum(results[name]['best_val_f1'] for name in models_dict.keys())
-            weights = {name: results[name]['best_val_f1'] / total_f1 
-                    for name in models_dict.keys()}
-        
-        # Weighted ensemble
-        ensemble_probs = torch.zeros_like(all_predictions[list(models_dict.keys())[0]])
-        for model_name, probs in all_predictions.items():
-            weight = weights.get(model_name, 1.0 / len(models_dict))
-            ensemble_probs += weight * probs
-        
-        # Get predictions
-        ensemble_preds = ensemble_probs.argmax(dim=1).numpy()
-        
-        # Calculate metrics
-        ensemble_acc = accuracy_score(all_labels, ensemble_preds)
-        ensemble_f1 = f1_score(all_labels, ensemble_preds, average='macro')
-        
+            all_labels.extend(labels.numpy().tolist())
+
+            batch_ensemble = None
+            for name in model_names:
+                model = models_dict[name]
+                w = weights[name]
+
+                if use_tta:
+                    probs = predict_proba_with_tta(model, images, device, n_tta=n_tta)
+                else:
+                    model.eval()
+                    with torch.no_grad():
+                        probs = torch.softmax(model(images), dim=1)
+
+                batch_ensemble = w * probs if batch_ensemble is None else batch_ensemble + w * probs
+
+            all_probs.append(batch_ensemble.detach().cpu())
+
+        all_probs = torch.cat(all_probs, dim=0)
+        preds = all_probs.argmax(dim=1).numpy()
+
+        acc = accuracy_score(all_labels, preds)
+        f1 = f1_score(all_labels, preds, average="macro")
+
         print(f"\n📊 Ensemble Validation Results:")
-        print(f"  Accuracy: {ensemble_acc:.4f}")
-        print(f"  Macro F1: {ensemble_f1:.4f}")
-        
-        print(f"\n📈 Comparison with Individual Models:")
-        for name in models_dict.keys():
-            individual_f1 = results[name]['best_val_f1']
-            improvement = ensemble_f1 - individual_f1
-            print(f"  {name:30s} : F1 = {individual_f1:.4f} | "
-                f"Ensemble gain = {improvement:+.4f}")
-        
-        print(f"\n🎯 Best Ensemble Improvement: {ensemble_f1 - max(results[name]['best_val_f1'] for name in models_dict.keys()):+.4f}")
-        
-        # Classification report
-        print("\nEnsemble Classification Report:")
-        print("="*70)
-        print(classification_report(all_labels, ensemble_preds, target_names=class_names))
-        
-        # Confusion matrix
-        plot_confusion_matrix(all_labels, ensemble_preds, class_names, "Ensemble", save_dir='plots')
-        
-        print("="*70)
-        
-        return ensemble_f1
+        print(f"  Accuracy: {acc:.4f}")
+        print(f"  Macro F1: {f1:.4f}")
+
+        print("\nClassification Report:")
+        print(classification_report(all_labels, preds, target_names=class_names))
+
+        return f1
+
 
     # ============================================================================
     # 13. CREATE AND EVALUATE ENSEMBLE
@@ -841,14 +1130,26 @@ def main():
         )
         
         # Generate ensemble predictions on test set
+        # ensemble_submission = ensemble_predictions(
+        #     ensemble_models, 
+        #     test_loader, 
+        #     device, 
+        #     label2name,
+        #     output_path='submission_ensemble.csv',
+        #     weights=None  # Uses validation F1 scores as weights
+        # )
+        weights = {name: results[name]['best_val_f1'] for name in ensemble_models.keys()}
         ensemble_submission = ensemble_predictions(
-            ensemble_models, 
-            test_loader, 
-            device, 
+            ensemble_models,
+            test_loader,
+            device,
             label2name,
             output_path='submission_ensemble.csv',
-            weights=None  # Uses validation F1 scores as weights
+            weights=weights,
+            use_tta=True,
+            n_tta=5
         )
+
         
         # Add ensemble to results
         results['Ensemble'] = {
