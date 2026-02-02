@@ -271,7 +271,7 @@ def get_val_transform():
 # ============================================================================
 # 4. DATASET
 # ============================================================================
-
+    
 class BloodDataset(Dataset):
     def __init__(self, df, transform=None, is_test=False):
         self.df = df.reset_index(drop=True)
@@ -284,13 +284,16 @@ class BloodDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         img_path = os.path.join(row["img_dir"], row["filename"])
-        image = np.array(Image.open(img_path).convert("RGB"))
         
+        # 1. Open as PIL Image (Torchvision transforms prefer PIL or Tensors)
+        image = Image.open(img_path).convert("RGB")
+        
+        # 2. Apply Torchvision transforms directly
         if self.transform:
-            augmented = self.transform(image=image)
-            image = augmented["image"]
+            image = self.transform(image)
         
         if self.is_test:
+            # For testing, image is already a Tensor if transform includes ToTensor()
             return image, row["filename"]
         
         label = torch.tensor(row["label_id"], dtype=torch.long)
@@ -370,7 +373,7 @@ class SwinTransformer(nn.Module):
         self.backbone = timm.create_model("swin_base_patch4_window7_224", 
                                          pretrained=pretrained, num_classes=0, in_chans=3)
         self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
-        print(f"  SwinTransformerImage: {sum(p.numel() for p in self.parameters())/1e6:.1f}M params")
+        print(f"  SwinTransformer: {sum(p.numel() for p in self.parameters())/1e6:.1f}M params")
     
     def forward(self, x):
         return self.classifier(self.backbone(x))
@@ -440,7 +443,7 @@ class EfficientNet(nn.Module):
         num_features = self.backbone.num_features
         self.classifier = ClassificationHead(num_features, num_classes, dropout)
         n_params = sum(p.numel() for p in self.parameters())
-        print(f"  EfficientNetImage: {n_params/1e6:.1f}M params")
+        print(f"  EfficientNet: {n_params/1e6:.1f}M params")
 
     def forward(self, x):
         features = self.backbone(x)
@@ -777,15 +780,15 @@ def main():
     configs = [
     {'model': 'SwinTransformer', 'loss': 'ce', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
     {'model': 'HybridSwin', 'loss': 'ce', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'EfficientNetImage','loss': 'ce','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
+    {'model': 'EfficientNet','loss': 'ce','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
 
     {'model': 'SwinTransformer', 'loss': 'focal', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
     {'model': 'HybridSwin', 'loss': 'focal', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'EfficientNetImage','loss': 'focal','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
+    {'model': 'EfficientNet','loss': 'focal','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
 
     {'model': 'SwinTransformer', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
     {'model': 'HybridSwin', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4, 'scheduler': 'cosine'},
-    {'model': 'EfficientNetImage','loss': 'focal_weighted','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
+    {'model': 'EfficientNet','loss': 'focal_weighted','lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4,'scheduler': 'cosine'},
     
     ]
 
