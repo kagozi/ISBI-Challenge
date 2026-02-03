@@ -862,12 +862,20 @@ def main():
     for config in configs:
         try:
             model, history, submission = train_model(
-                config, train_loader, val_loader, test_loader, 
-                num_classes, label2name, device, class_weights)
-            results[config['model']] = {
-                'model': model, 'history': history, 
-                'submission': submission, 'best_val_f1': max(history['val_f1'])
+                config, train_loader, val_loader, test_loader,
+                num_classes, label2name, device, class_weights
+            )
+
+            key = f"{config['model']}_{config['loss']}"
+
+            results[key] = {
+                'model': model,
+                'history': history,
+                'submission': submission,
+                'loss': config['loss'],  # store loss explicitly
+                'best_val_f1': max(history['val_f1'])
             }
+
         except Exception as e:
             print(f"\n❌ Error training {config['model']}: {str(e)}")
             import traceback
@@ -876,12 +884,23 @@ def main():
     print("\n" + "="*70)
     print("TRAINING SUMMARY")
     print("="*70)
+
     if results:
         for name, result in results.items():
-            print(f"{name:30s} | Best Val F1: {result['best_val_f1']:.4f}")
+            print(
+                f"{name:25s} | "
+                f"Loss: {result['loss']:12s} | "
+                f"Best Val F1: {result['best_val_f1']:.4f}"
+            )
+
         best = max(results, key=lambda k: results[k]['best_val_f1'])
-        print(f"\n🏆 Best Single Model: {best} (F1: {results[best]['best_val_f1']:.4f})")
+        print(
+            f"\n🏆 Best Single Model: {best} "
+            f"(F1: {results[best]['best_val_f1']:.4f})"
+        )
+
     print("="*70)
+
 
 
     # ============================================================================
