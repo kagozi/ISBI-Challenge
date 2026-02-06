@@ -37,6 +37,6 @@ eval "$(mamba shell hook --shell bash)"
 mamba activate ecg
 
 
-python train_two.py
+python wbc_improved_with_autogluon.py
 
 nvidia-smi
