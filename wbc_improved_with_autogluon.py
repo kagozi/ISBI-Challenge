@@ -293,22 +293,54 @@ class ImprovedClassificationHead(nn.Module):
     
     def forward(self, x):
         return self.head(x)
-
-class ImprovedSwinTransformer(nn.Module):
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.backbone = timm.create_model(
-            "swin_base_patch4_window7_224",
-            pretrained=pretrained,
-            num_classes=0,
-            in_chans=3
-        )
-        self.classifier = ImprovedClassificationHead(
-            self.backbone.num_features, num_classes, dropout
-        )
     
+# SE Attention Block
+class SEBlock(nn.Module):
+    def __init__(self, channels, reduction=16):
+        super(SEBlock, self).__init__()
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channels, channels // reduction),
+            nn.ReLU(),
+            nn.Linear(channels // reduction, channels),
+            nn.Sigmoid()
+        )
+
     def forward(self, x):
-        return self.classifier(self.backbone(x))
+        batch, channels, _, _ = x.size()
+        scale = self.global_avg_pool(x).view(batch, channels)
+        scale = self.fc(scale).view(batch, channels, 1, 1)
+        return x * scale
+
+class HybridSwin(nn.Module):
+    def __init__(self, num_classes, dropout=0.4, pretrained=True):
+        super(HybridSwin, self).__init__()
+
+        self.conv_stem = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),  # No downsampling
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=False),  # No downsampling
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            SEBlock(128),
+            nn.Conv2d(128, 3, kernel_size=1, stride=1, padding=0, bias=False),  # Keep 3 channels for Swin input
+            nn.BatchNorm2d(3),
+            nn.ReLU()
+        )
+
+        self.swin = timm.create_model('swin_base_patch4_window7_224', pretrained=True, num_classes=512)
+
+        self.fc = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(512, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.conv_stem(x)  # Ensure it maintains 224×224 size
+        x = self.swin(x)  # Pass to Swin Transformer
+        x = self.fc(x)  # Final classification layer
+        return x
 
 class ConvNeXt(nn.Module):
     """ConvNeXt often outperforms EfficientNet for medical images"""
@@ -346,8 +378,8 @@ class MaxViT(nn.Module):
 
 def get_model(model_name, num_classes, device):
     print(f"\n{'='*60}\nInitializing {model_name}\n{'='*60}")
-    if model_name == 'SwinTransformer':
-        model = ImprovedSwinTransformer(num_classes=num_classes)
+    if model_name == 'HybridSwin':
+        model = HybridSwin(num_classes=num_classes)
     elif model_name == 'ConvNeXt':
         model = ConvNeXt(num_classes=num_classes)
     elif model_name == 'MaxViT':
@@ -708,13 +740,13 @@ def main():
     
     # Training configurations - use the best loss (poly from winning solution)
     configs = [
-        {'model': 'SwinTransformer', 'loss': 'poly', 'lr': 3e-5, 'epochs': 40, 'weight_decay': 1e-4},
+        {'model': 'HybridSwin', 'loss': 'poly', 'lr': 3e-5, 'epochs': 40, 'weight_decay': 1e-4},
         {'model': 'ConvNeXt', 'loss': 'poly', 'lr': 5e-5, 'epochs': 40, 'weight_decay': 1e-4},
         {'model': 'MaxViT', 'loss': 'poly', 'lr': 5e-5, 'epochs': 40, 'weight_decay': 1e-4},
-        {'model': 'SwinTransformer', 'loss': 'ce', 'lr': 3e-5, 'epochs': 40, 'weight_decay': 1e-4},
+        {'model': 'HybridSwin', 'loss': 'ce', 'lr': 3e-5, 'epochs': 40, 'weight_decay': 1e-4},
         {'model': 'ConvNeXt', 'loss': 'ce', 'lr': 5e-5, 'epochs': 40, 'weight_decay': 1e-4},
         {'model': 'MaxViT', 'loss': 'ce', 'lr': 5e-5, 'epochs': 40, 'weight_decay': 1e-4},
-        {'model': 'SwinTransformer', 'loss': 'ce_smooth', 'lr': 3e-5, 'epochs': 40, 'weight_decay': 1e-4},
+        {'model': 'HybridSwin', 'loss': 'ce_smooth', 'lr': 3e-5, 'epochs': 40, 'weight_decay': 1e-4},
         {'model': 'ConvNeXt', 'loss': 'ce_smooth', 'lr': 5e-5, 'epochs': 40, 'weight_decay': 1e-4},
         {'model': 'MaxViT', 'loss': 'ce_smooth', 'lr': 5e-5, 'epochs': 40, 'weight_decay': 1e-4},
     ]
