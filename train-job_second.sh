@@ -34,9 +34,10 @@ nvidia-smi
 # ---------------------------------------------------------------------------
 
 eval "$(mamba shell hook --shell bash)"
-mamba activate ecg
+mamba activate wbc_challenge
 
 
 python wbc_improved_with_autogluon.py
+# python wbc_no_weights.py
 
 nvidia-smi
