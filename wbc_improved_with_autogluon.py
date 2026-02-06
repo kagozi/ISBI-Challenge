@@ -719,14 +719,16 @@ def main():
     # Create data loaders with weighted sampling
     weighted_sampler = get_weighted_sampler(train_df_split)
     
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=32,
-        sampler=weighted_sampler,  # Use weighted sampler instead of shuffle
-        num_workers=4,
-        pin_memory=True,
-        drop_last=True
-    )
+    # train_loader = DataLoader(
+    #     train_dataset,
+    #     batch_size=32,
+    #     sampler=weighted_sampler,  # Use weighted sampler instead of shuffle
+    #     num_workers=4,
+    #     pin_memory=True,
+    #     drop_last=True
+    # )
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, 
+                          num_workers=4, pin_memory=True, drop_last=True)
     
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False,
                            num_workers=4, pin_memory=True)
