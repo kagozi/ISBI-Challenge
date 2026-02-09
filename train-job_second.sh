@@ -37,6 +37,6 @@ eval "$(mamba shell hook --shell bash)"
 mamba activate wbc_challenge
 
 
-python run.py
+python run_autogluon_ensemble.py
 
 nvidia-smi
