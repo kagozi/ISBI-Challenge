@@ -425,7 +425,7 @@ def create_autogluon_ensemble(models_dict, train_loader, val_loader, test_loader
     #     time_limit=36000  # 10 hours max
     # )
     # Train or load AutoGluon
-    autogluon_path = os.path.join(SAVE_DIR, 'AutogluonModels')
+    autogluon_path = os.path.join(SAVE_DIR, 'AutogluonModels', 'ds_sub_fit', 'sub_fit_ho')  
 
     if os.path.exists(autogluon_path):
         print(f"\n✓ Found existing AutoGluon model")
