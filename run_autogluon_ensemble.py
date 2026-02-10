@@ -408,51 +408,44 @@ def create_autogluon_ensemble(models_dict, train_loader, val_loader, test_loader
     test_df.to_csv(os.path.join(SAVE_DIR, 'autogluon_test.csv'), index=False)
     print("✓ Saved probability features")
     
-    # Train AutoGluon
-    print("\nTraining AutoGluon meta-model...")
-    predictor = TabularPredictor(
-        label='label',
-        problem_type='multiclass',
-        eval_metric='f1_macro',
-        path=os.path.join(SAVE_DIR, 'AutogluonModels')
-    )
-    
-    predictor.fit(
-        TabularDataset(train_df),
-        tuning_data=TabularDataset(val_df),
-        presets='best_quality',
-        num_stack_levels=3,
-        time_limit=36000  # 10 hours max
-    )
     # Train or load AutoGluon
-    # autogluon_path = os.path.join(SAVE_DIR, 'AutogluonModels')
-
-    # if os.path.exists(autogluon_path):
-    #     print(f"\n✓ Found existing AutoGluon model")
-    #     print("→ Loading existing model (delete models_improved/AutogluonModels/ to retrain)")
-    #     predictor = TabularPredictor.load(autogluon_path)
-    # else:
-    #     print("\nTraining AutoGluon meta-model...")
-    #     predictor = TabularPredictor(
-    #         label='label',
-    #         problem_type='multiclass',
-    #         eval_metric='f1_macro',
-    #         path=autogluon_path
-    #     )
-        
-    #     predictor.fit(
-    #         TabularDataset(train_df),
-    #         tuning_data=TabularDataset(val_df),
-    #         presets='best_quality',
-    #         num_stack_levels=3,
-    #         time_limit=36000
-    #     )
+    autogluon_path = os.path.join(SAVE_DIR, 'AutogluonModels')
     
-    # Evaluate
+    if os.path.exists(autogluon_path):
+        print(f"\n✓ Found existing AutoGluon model")
+        print("→ Loading existing model (delete models_improved/AutogluonModels/ to retrain)")
+        predictor = TabularPredictor.load(autogluon_path)
+    else:
+        print("\nTraining AutoGluon meta-model...")
+        predictor = TabularPredictor(
+            label='label',
+            problem_type='multiclass',
+            eval_metric='f1_macro',
+            path=autogluon_path
+        )
+        
+        # Combine train and val data (AutoGluon will use bagging internally)
+        combined_df = pd.concat([train_df, val_df], ignore_index=True)
+        
+        predictor.fit(
+            TabularDataset(combined_df),
+            presets='best_quality',
+            num_stack_levels=3,
+            dynamic_stacking=False,  # Skip DyStack since we know 3 levels works
+            time_limit=36000  # 10 hours max
+        )
+    
+    # Evaluate (using validation data)
     val_preds = predictor.predict(TabularDataset(val_df))
     val_f1 = f1_score(val_labels, val_preds, average='macro')
     
     print(f"\n✓ AutoGluon Validation F1: {val_f1:.4f}")
+    print("\nPer-class F1 scores:")
+    val_f1_per_class = f1_score(val_labels, val_preds, average=None)
+    for i, f1 in enumerate(val_f1_per_class):
+        class_name = label2name[i] if i in label2name else f"Class_{i}"
+        print(f"  {class_name:15s}: {f1:.4f}")
+    
     print("\nClassification Report:")
     print(classification_report(val_labels, val_preds))
     
