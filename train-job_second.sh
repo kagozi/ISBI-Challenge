@@ -6,8 +6,8 @@
 
 ### Job Configuration #########################################################
 
-#SBATCH --job-name=isbi-stage1-train
-#SBATCH --output=isbi-stage1-train-%j.out
+#SBATCH --job-name=autoglon-ensemble-train
+#SBATCH --output=autoglon-ensemble-%j.out
 
 #SBATCH --get-user-env
 
