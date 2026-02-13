@@ -38,6 +38,6 @@ mamba activate wbc_challenge
 
 
 python main_kfold.py
-python autogluon_kfold_ensemble.py
+# python autogluon_kfold_ensemble.py
 
 nvidia-smi
