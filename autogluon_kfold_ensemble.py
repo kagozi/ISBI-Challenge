@@ -344,7 +344,7 @@ def main():
     print(f"  Features after:  {n_after - 1}  (+{n_after - n_before} engineered)")
 
     # Step 3: Train AutoGluon meta-learner on OOF data
-    predictor = train_meta_learner(oof_merged, time_limit=3600)
+    predictor = train_meta_learner(oof_merged, time_limit=7200)
 
     # Step 4: Evaluate and generate submission
     submission_df, oof_perf = evaluate_and_submit(
