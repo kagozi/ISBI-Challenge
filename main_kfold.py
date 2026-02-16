@@ -65,7 +65,12 @@ class Config:
         # {'model': 'SwinTransformer', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         # {'model': 'HybridSwin',      'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         # {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
+        
+        {'model': 'ViT',             'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        {'model': 'ViT',             'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        {'model': 'ViT',             'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     ]
+
 
 
 cfg = Config()
@@ -178,6 +183,43 @@ def get_val_transform():
         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
         A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ToTensorV2(),
+    ])
+
+
+# H-Optimus-1 uses its own normalization constants
+def get_train_transform_hoptimus():
+    return A.Compose([
+        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
+        A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
+        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
+        A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.2),
+        A.Rotate(limit=30, border_mode=cv2.BORDER_REFLECT, p=0.4),
+        A.RandomResizedCrop(size=(cfg.IMG_SIZE, cfg.IMG_SIZE), scale=(0.85, 1.0), ratio=(0.95, 1.05), p=0.3),
+        A.OneOf([
+            A.ElasticTransform(alpha=10, sigma=4, alpha_affine=3, border_mode=cv2.BORDER_REFLECT, p=1.0),
+            A.GridDistortion(num_steps=5, distort_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
+            A.OpticalDistortion(distort_limit=0.07, shift_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
+        ], p=0.15),
+        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.08, p=0.4),
+        A.HueSaturationValue(hue_shift_limit=8, sat_shift_limit=15, val_shift_limit=10, p=0.25),
+        A.OneOf([
+            A.GaussNoise(var_limit=(3.0, 12.0), p=1.0),
+            A.GaussianBlur(blur_limit=(3, 3), p=1.0),
+            A.MedianBlur(blur_limit=3, p=1.0),
+        ], p=0.25),
+        A.Normalize(mean=(0.707223, 0.578729, 0.703617), std=(0.211883, 0.230117, 0.177517)),
+        ToTensorV2(),
+    ])
+
+
+def get_val_transform_hoptimus():
+    return A.Compose([
+        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
+        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
+        A.Normalize(mean=(0.707223, 0.578729, 0.703617), std=(0.211883, 0.230117, 0.177517)),
         ToTensorV2(),
     ])
 
@@ -345,12 +387,50 @@ class EfficientNet(nn.Module):
         return self.classifier(self.backbone(x))
 
 
+## Add a Vit large model
+class ViT(nn.Module):
+    def __init__(self, num_classes, dropout=0.4, pretrained=True):
+        super().__init__()
+        self.backbone = timm.create_model(
+            "vit_large_patch16_224", pretrained=pretrained, num_classes=0, in_chans=3)
+        self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
+
+    def forward(self, x):
+        return self.classifier(self.backbone(x))
+    
+class HOptimus1(nn.Module):
+    """
+    H-Optimus-1: State-of-the-art pathology foundation model (ViT-Large/16).
+    Pretrained on large-scale histopathology data by Bioptimus.
+    Loaded via timm from HuggingFace Hub.
+    """
+    def __init__(self, num_classes, dropout=0.4, pretrained=True):
+        super().__init__()
+        self.backbone = timm.create_model(
+            "hf-hub:bioptimus/H-optimus-0",
+            pretrained=pretrained,
+            num_classes=0,       # remove default head, use as feature extractor
+            init_values=1e-5,
+            dynamic_img_size=False,
+        )
+        # ViT-L/16 outputs 1024-dim features
+        embed_dim = self.backbone.num_features  # 1024
+        self.classifier = ClassificationHead(embed_dim, num_classes, dropout)
+
+    def forward(self, x):
+        features = self.backbone(x)
+        return self.classifier(features)
+
 MODEL_REGISTRY = {
     'SwinTransformer': SwinTransformer,
     'HybridSwin': HybridSwin,
     'EfficientNet': EfficientNet,
+    'HOptimus1': HOptimus1,
+    'ViT': ViT,
 }
 
+# Models that require their own normalization / transforms
+HOPTIMUS_MODELS = {'HOptimus1'}
 
 # ============================================================================
 # MIXUP
@@ -473,7 +553,6 @@ def extract_test_probabilities(model, loader, device, n_tta=5):
 
     return np.vstack(all_probs), all_filenames
 
-
 # ============================================================================
 # K-FOLD TRAINING FOR A SINGLE CONFIG
 # ============================================================================
@@ -496,6 +575,16 @@ def train_kfold(config, train_df, test_df, num_classes, class_weights,
     print(f"\n{'#'*70}")
     print(f"# K-FOLD TRAINING: {config_key}")
     print(f"{'#'*70}")
+
+    # Select appropriate transforms for this model
+    use_hoptimus_transforms = model_name in HOPTIMUS_MODELS
+    if use_hoptimus_transforms:
+        print(f"  ℹ️  Using H-Optimus-1 normalization constants")
+        train_transform = get_train_transform_hoptimus()
+        val_transform = get_val_transform_hoptimus()
+    else:
+        train_transform = get_train_transform()
+        val_transform = get_val_transform()
 
     n_train = len(train_df)
     n_test = len(test_df)
@@ -520,10 +609,10 @@ def train_kfold(config, train_df, test_df, num_classes, class_weights,
         fold_train_df = train_df.iloc[train_indices].reset_index(drop=True)
         fold_val_df = train_df.iloc[val_indices].reset_index(drop=True)
 
-        # Datasets & loaders
-        fold_train_ds = BloodDataset(fold_train_df, transform=get_train_transform())
-        fold_val_ds = BloodDataset(fold_val_df, transform=get_val_transform())
-        test_ds = BloodDataset(test_df, transform=get_val_transform(), is_test=True)
+        # Datasets & loaders (using model-specific transforms)
+        fold_train_ds = BloodDataset(fold_train_df, transform=train_transform)
+        fold_val_ds = BloodDataset(fold_val_df, transform=val_transform)
+        test_ds = BloodDataset(test_df, transform=val_transform, is_test=True)
 
         fold_train_loader = DataLoader(fold_train_ds, batch_size=cfg.BATCH_SIZE, shuffle=True,
                                        num_workers=cfg.NUM_WORKERS, pin_memory=True, drop_last=True)
@@ -596,6 +685,7 @@ def train_kfold(config, train_df, test_df, num_classes, class_weights,
     print(f"  {'='*50}")
 
     return oof_probs, test_probs_avg, test_filenames, fold_metrics
+
 
 
 # ============================================================================
