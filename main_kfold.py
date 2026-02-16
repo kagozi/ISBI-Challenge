@@ -71,8 +71,8 @@ class Config:
         # {'model': 'ViT',             'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         
         # H-Optimus-1: pathology foundation model (pretrained on large-scale histopathology data by Bioptimus)
-        {'model': 'HOptimus1',       'loss': 'ce',             'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'HOptimus1',       'loss': 'focal',          'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        # {'model': 'HOptimus1',       'loss': 'ce',             'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        {'model': 'HOptimus1',       'loss': 'focal',          'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
         # {'model': 'HOptimus1',       'loss': 'focal_weighted', 'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
     ]
 
