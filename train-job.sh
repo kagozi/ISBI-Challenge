@@ -6,8 +6,8 @@
 
 ### Job Configuration #########################################################
 
-#SBATCH --job-name=isbi-stage1-train
-#SBATCH --output=isbi-stage1-train-%j.out
+#SBATCH --job-name=average-ensemble
+#SBATCH --output=verage-ensemble-%j.out
 
 #SBATCH --get-user-env
 
@@ -37,6 +37,6 @@ eval "$(mamba shell hook --shell bash)"
 mamba activate wbc_challenge
 
 
-python run_autogluon_ensemble.py
+python test_ensembles_kfold.py
 
 nvidia-smi

@@ -6,8 +6,8 @@
 
 ### Job Configuration #########################################################
 
-#SBATCH --job-name=autoglon-ensemble-train
-#SBATCH --output=autoglon-ensemble-%j.out
+#SBATCH --job-name=kfold-ensemble-train
+#SBATCH --output=kfold-ensemble-%j.out
 
 #SBATCH --get-user-env
 
@@ -37,7 +37,7 @@ eval "$(mamba shell hook --shell bash)"
 mamba activate wbc_challenge
 
 
-python main_kfold.py
-# python autogluon_kfold_ensemble.py
+# python main_kfold.py
+python autogluon_kfold_ensemble.py
 
 nvidia-smi
