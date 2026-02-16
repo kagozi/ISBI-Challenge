@@ -80,6 +80,39 @@ class Config:
 
 cfg = Config()
 
+# ============================================================================
+# HUGGING FACE AUTHENTICATION (for gated models like H-Optimus-0)
+# ============================================================================
+
+def setup_huggingface_auth():
+    """Ensure Hugging Face authentication for gated models."""
+    try:
+        from huggingface_hub import login, HfFolder
+        
+        # Try to get existing token
+        token = HfFolder.get_token()
+        
+        if token is None:
+            print("\n⚠️  H-Optimus-0 requires Hugging Face authentication")
+            print("Please run: huggingface-cli login")
+            print("Or set HUGGINGFACE_TOKEN environment variable")
+            return False
+        
+        print("✓ Hugging Face authentication found")
+        return True
+        
+    except ImportError:
+        print("⚠️  huggingface-hub not installed")
+        print("Install with: pip install huggingface-hub --break-system-packages")
+        return False
+
+# Call this before training H-Optimus models
+if any(cfg['model'] == 'HOptimus1' for cfg in cfg.CONFIGS):
+    if not setup_huggingface_auth():
+        print("\n❌ Removing HOptimus1 from training configs (authentication required)")
+        cfg.CONFIGS = [c for c in cfg.CONFIGS if c['model'] != 'HOptimus1']
+        
+
 # Create directories
 for d in [cfg.SAVE_DIR, cfg.OOF_DIR, cfg.TEST_PRED_DIR, cfg.PLOT_DIR, cfg.SUBMISSION_DIR]:
     os.makedirs(d, exist_ok=True)
