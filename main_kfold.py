@@ -67,8 +67,8 @@ class Config:
         # {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         
         # {'model': 'ViT',             'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        {'model': 'ViT',             'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'ViT',             'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        # {'model': 'ViT',             'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        {'model': 'ViT',             'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     ]
 
 
