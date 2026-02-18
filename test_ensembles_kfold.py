@@ -78,6 +78,8 @@ def main():
         'SwinTransformer_ce', 'HybridSwin_ce', 'EfficientNet_ce',
         'SwinTransformer_focal', 'HybridSwin_focal', 'EfficientNet_focal',
         'SwinTransformer_focal_weighted', 'HybridSwin_focal_weighted', 'EfficientNet_focal_weighted',
+        'HOptimus1_ce', 'HOptimus1_focal', 'HOptimus1_focal_weighted',
+        'ViT_ce', 'ViT_focal', 'ViT_focal_weighted',
     ]
 
     for config_key in model_configs:

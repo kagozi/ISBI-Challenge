@@ -14,7 +14,7 @@ spec:
 
       containers:
         - name: train
-          image: ghcr.io/<YOUR_GH_ORG_OR_USER>/<YOUR_REPO>:latest
+          image: ghcr.io/kagozi/isbi-challenge:latest
           imagePullPolicy: Always
 
           env:
@@ -56,8 +56,11 @@ spec:
           resources:
             limits:
               nvidia.com/gpu: 1
+              memory: 32Gi
             requests:
               nvidia.com/gpu: 1
+              memory: 16Gi
+              cpu: 4
 
           volumeMounts:
             - name: wbcbench-vol
