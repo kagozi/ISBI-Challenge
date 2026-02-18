@@ -1,0 +1,22 @@
+# wbc-data-pvc.yaml - configuration for PersistentVolumeClaim for SLT data storage
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: wbc-data
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 150Gi
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wbcbench-pvc
+spec:
+  storageClassName: rook-cephfs
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 200Gi

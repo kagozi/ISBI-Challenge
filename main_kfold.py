@@ -8,106 +8,31 @@ Generates averaged test predictions per model.
 Usage:
     python main_kfold.py
 """
-
+import argparse
 import os
 import pandas as pd
 import numpy as np
-from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+from torch.utils.data import DataLoader
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
-import cv2
-import timm
+from sklearn.metrics import accuracy_score, f1_score, classification_report
 import warnings
 import json
-from datetime import datetime
-
+from utils import setup_huggingface_auth, plot_oof_confusion_matrix, get_loss_fn, compute_custom_class_weights, train_one_epoch, validate_one_epoch, extract_oof_probabilities, extract_test_probabilities
+from models import MODEL_REGISTRY, HOPTIMUS_MODELS
 warnings.filterwarnings('ignore')
-
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
-class Config:
-    DATA_PATH = '../data'
-    N_FOLDS = 5
-    SEED = 42
-    IMG_SIZE = 224
-    BATCH_SIZE = 8
-    NUM_WORKERS = 4
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Output directories
-    SAVE_DIR = 'models_kfold'
-    OOF_DIR = 'oof_predictions'
-    TEST_PRED_DIR = 'test_predictions'
-    PLOT_DIR = 'plots_kfold'
-    SUBMISSION_DIR = 'submissions_kfold'
-
-    # Model configs to train
-    CONFIGS = [
-        # {'model': 'SwinTransformer', 'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'HybridSwin',      'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'SwinTransformer', 'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'HybridSwin',      'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'EfficientNet',     'loss': 'focal',          'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'SwinTransformer', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'HybridSwin',      'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
-        
-        {'model': 'ViT',             'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'ViT',             'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'ViT',             'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        
-        # H-Optimus-1: pathology foundation model (pretrained on large-scale histopathology data by Bioptimus)
-        # {'model': 'HOptimus1',       'loss': 'ce',             'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'HOptimus1',       'loss': 'focal',          'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        # {'model': 'HOptimus1',       'loss': 'focal_weighted', 'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
-    ]
-
-
+from config import Config
+from dataloader import load_data, BloodDataset, get_train_transform, get_val_transform, get_train_transform_hoptimus, get_val_transform_hoptimus
 
 cfg = Config()
 
-# ============================================================================
-# HUGGING FACE AUTHENTICATION (for gated models like H-Optimus-0)
-# ============================================================================
-
-def setup_huggingface_auth():
-    """Ensure Hugging Face authentication for gated models."""
-    try:
-        from huggingface_hub import login, HfFolder
-        
-        # Try to get existing token
-        token = HfFolder.get_token()
-        
-        if token is None:
-            print("\n⚠️  H-Optimus-0 requires Hugging Face authentication")
-            print("Please run: huggingface-cli login")
-            print("Or set HUGGINGFACE_TOKEN environment variable")
-            return False
-        
-        print("✓ Hugging Face authentication found")
-        return True
-        
-    except ImportError:
-        print("⚠️  huggingface-hub not installed")
-        print("Install with: pip install huggingface-hub --break-system-packages")
-        return False
 
 # Call this before training H-Optimus models
-if any(cfg['model'] == 'HOptimus1' for cfg in cfg.CONFIGS):
+if any(c['model'] == 'HOptimus1' for c in cfg.CONFIGS):
     if not setup_huggingface_auth():
         print("\n❌ Removing HOptimus1 from training configs (authentication required)")
         cfg.CONFIGS = [c for c in cfg.CONFIGS if c['model'] != 'HOptimus1']
@@ -117,479 +42,6 @@ if any(cfg['model'] == 'HOptimus1' for cfg in cfg.CONFIGS):
 for d in [cfg.SAVE_DIR, cfg.OOF_DIR, cfg.TEST_PRED_DIR, cfg.PLOT_DIR, cfg.SUBMISSION_DIR]:
     os.makedirs(d, exist_ok=True)
 
-
-# ============================================================================
-# DATA LOADING
-# ============================================================================
-
-def load_data(data_path):
-    PHASE1_IMG_DIR = os.path.join(data_path, "phase1")
-    PHASE2_TRAIN_IMG_DIR = os.path.join(data_path, "phase2/train")
-    PHASE2_EVAL_IMG_DIR = os.path.join(data_path, "phase2/eval")
-    PHASE2_TEST_IMG_DIR = os.path.join(data_path, "phase2/test")
-
-    def clean_df(df):
-        df = df.drop(columns=[c for c in df.columns if c.startswith("Unnamed")], errors="ignore")
-        df = df.rename(columns={"ID": "filename", "labels": "label"})
-        return df
-
-    phase1_df = clean_df(pd.read_csv(os.path.join(data_path, "phase1_label.csv")))
-    phase2_train_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_train.csv")))
-    phase2_eval_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_eval.csv")))
-    phase2_test_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_test.csv")))
-
-    phase1_df["img_dir"] = PHASE1_IMG_DIR
-    phase2_train_df["img_dir"] = PHASE2_TRAIN_IMG_DIR
-    phase2_eval_df["img_dir"] = PHASE2_EVAL_IMG_DIR
-    phase2_test_df["img_dir"] = PHASE2_TEST_IMG_DIR
-
-    # Combine all labeled data
-    train_df = pd.concat([phase1_df, phase2_train_df, phase2_eval_df], ignore_index=True)
-    test_df = phase2_test_df.copy()
-
-    # Class mapping
-    class_names = sorted(train_df["label"].unique())
-    num_classes = len(class_names)
-    label2name = dict(zip(range(num_classes), class_names))
-    name2label = {v: k for k, v in label2name.items()}
-
-    train_df["label_id"] = train_df["label"].map(name2label)
-    test_df["label_id"] = -1
-
-    print(f"\n{'='*70}")
-    print(f"DATA SUMMARY")
-    print(f"{'='*70}")
-    print(f"Total training samples: {len(train_df):,}")
-    print(f"Test samples:           {len(test_df):,}")
-    print(f"Classes ({num_classes}): {class_names}")
-    print(f"{'='*70}\n")
-
-    return train_df, test_df, class_names, num_classes, label2name, name2label
-
-
-# ============================================================================
-# TRANSFORMS
-# ============================================================================
-
-def advanced_clahe_preprocessing(image):
-    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    l_clahe = clahe.apply(l)
-    lab_clahe = cv2.merge([l_clahe, a, b])
-    return cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2RGB)
-
-
-def morphology_on_lab_l(image):
-    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    l2 = cv2.morphologyEx(l, cv2.MORPH_CLOSE, kernel, iterations=1)
-    lab2 = cv2.merge([l2, a, b])
-    return cv2.cvtColor(lab2, cv2.COLOR_LAB2RGB)
-
-
-def get_train_transform():
-    return A.Compose([
-        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-        A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
-        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
-        A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.2),
-        A.Rotate(limit=30, border_mode=cv2.BORDER_REFLECT, p=0.4),
-        A.RandomResizedCrop(size=(cfg.IMG_SIZE, cfg.IMG_SIZE), scale=(0.85, 1.0), ratio=(0.95, 1.05), p=0.3),
-        A.OneOf([
-            A.ElasticTransform(alpha=10, sigma=4, alpha_affine=3, border_mode=cv2.BORDER_REFLECT, p=1.0),
-            A.GridDistortion(num_steps=5, distort_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
-            A.OpticalDistortion(distort_limit=0.07, shift_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
-        ], p=0.15),
-        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.08, p=0.4),
-        A.HueSaturationValue(hue_shift_limit=8, sat_shift_limit=15, val_shift_limit=10, p=0.25),
-        A.OneOf([
-            A.GaussNoise(var_limit=(3.0, 12.0), p=1.0),
-            A.GaussianBlur(blur_limit=(3, 3), p=1.0),
-            A.MedianBlur(blur_limit=3, p=1.0),
-        ], p=0.25),
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ToTensorV2(),
-    ])
-
-
-def get_val_transform():
-    return A.Compose([
-        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ToTensorV2(),
-    ])
-
-
-# H-Optimus-1 uses its own normalization constants
-def get_train_transform_hoptimus():
-    return A.Compose([
-        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-        A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
-        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
-        A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.2),
-        A.Rotate(limit=30, border_mode=cv2.BORDER_REFLECT, p=0.4),
-        A.RandomResizedCrop(size=(cfg.IMG_SIZE, cfg.IMG_SIZE), scale=(0.85, 1.0), ratio=(0.95, 1.05), p=0.3),
-        A.OneOf([
-            A.ElasticTransform(alpha=10, sigma=4, alpha_affine=3, border_mode=cv2.BORDER_REFLECT, p=1.0),
-            A.GridDistortion(num_steps=5, distort_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
-            A.OpticalDistortion(distort_limit=0.07, shift_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
-        ], p=0.15),
-        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.08, p=0.4),
-        A.HueSaturationValue(hue_shift_limit=8, sat_shift_limit=15, val_shift_limit=10, p=0.25),
-        A.OneOf([
-            A.GaussNoise(var_limit=(3.0, 12.0), p=1.0),
-            A.GaussianBlur(blur_limit=(3, 3), p=1.0),
-            A.MedianBlur(blur_limit=3, p=1.0),
-        ], p=0.25),
-        A.Normalize(mean=(0.707223, 0.578729, 0.703617), std=(0.211883, 0.230117, 0.177517)),
-        ToTensorV2(),
-    ])
-
-
-def get_val_transform_hoptimus():
-    return A.Compose([
-        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
-        A.Normalize(mean=(0.707223, 0.578729, 0.703617), std=(0.211883, 0.230117, 0.177517)),
-        ToTensorV2(),
-    ])
-
-
-# ============================================================================
-# DATASET
-# ============================================================================
-
-class BloodDataset(Dataset):
-    def __init__(self, df, transform=None, is_test=False):
-        self.df = df.reset_index(drop=True)
-        self.transform = transform
-        self.is_test = is_test
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        img_path = os.path.join(row["img_dir"], row["filename"])
-        image = np.array(Image.open(img_path).convert("RGB"))
-
-        if self.transform:
-            image = self.transform(image=image)["image"]
-
-        if self.is_test:
-            return image, row["filename"]
-
-        label = torch.tensor(row["label_id"], dtype=torch.long)
-        return image, label
-
-
-# ============================================================================
-# LOSS FUNCTIONS
-# ============================================================================
-
-class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2.0):
-        super().__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-
-    def forward(self, inputs, targets):
-        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
-        pt = torch.exp(-ce_loss)
-        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
-        return focal_loss.mean()
-
-
-class FocalLossWithClassWeights(nn.Module):
-    def __init__(self, alpha=None, gamma=2, reduction='mean'):
-        super().__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-
-    def forward(self, inputs, targets):
-        ce_loss = F.cross_entropy(inputs, targets, reduction='none', weight=self.alpha)
-        pt = torch.exp(-ce_loss)
-        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
-        if self.reduction == 'mean':
-            return focal_loss.mean()
-        return focal_loss
-
-
-def compute_custom_class_weights(num_classes, name2label, device):
-    weights = torch.ones(num_classes, dtype=torch.float32) * 0.25
-    custom = {'BNE': 0.75, 'MMY': 0.6, 'PC': 0.6, 'PMY': 0.75, 'VLY': 0.75}
-    for cls_name, w in custom.items():
-        if cls_name in name2label:
-            weights[name2label[cls_name]] = w
-    return weights.to(device)
-
-
-def get_loss_fn(loss_name, class_weights):
-    if loss_name == 'ce':
-        return nn.CrossEntropyLoss()
-    elif loss_name == 'focal':
-        return FocalLoss()
-    elif loss_name == 'focal_weighted':
-        return FocalLossWithClassWeights(alpha=class_weights)
-    else:
-        raise ValueError(f"Unknown loss: {loss_name}")
-
-
-# ============================================================================
-# MODEL DEFINITIONS
-# ============================================================================
-
-class ClassificationHead(nn.Module):
-    def __init__(self, in_dim, num_classes, dropout=0.4):
-        super().__init__()
-        self.head = nn.Sequential(
-            nn.BatchNorm1d(in_dim),
-            nn.Dropout(dropout),
-            nn.Linear(in_dim, 512),
-            nn.GELU(),
-            nn.BatchNorm1d(512),
-            nn.Dropout(dropout / 2),
-            nn.Linear(512, num_classes)
-        )
-
-    def forward(self, x):
-        return self.head(x)
-
-
-class SwinTransformer(nn.Module):
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.backbone = timm.create_model(
-            "swin_base_patch4_window7_224", pretrained=pretrained, num_classes=0, in_chans=3)
-        self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
-
-    def forward(self, x):
-        return self.classifier(self.backbone(x))
-
-
-class SEBlock(nn.Module):
-    def __init__(self, channels, reduction=16):
-        super().__init__()
-        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(channels, channels // reduction),
-            nn.ReLU(),
-            nn.Linear(channels // reduction, channels),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        batch, channels, _, _ = x.size()
-        scale = self.global_avg_pool(x).view(batch, channels)
-        scale = self.fc(scale).view(batch, channels, 1, 1)
-        return x * scale
-
-
-class HybridSwin(nn.Module):
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.conv_stem = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(64), nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(128), nn.ReLU(),
-            SEBlock(128),
-            nn.Conv2d(128, 3, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(3), nn.ReLU()
-        )
-        self.swin = timm.create_model('swin_base_patch4_window7_224', pretrained=pretrained, num_classes=512)
-        self.fc = nn.Sequential(nn.Dropout(0.3), nn.Linear(512, num_classes))
-
-    def forward(self, x):
-        x = self.conv_stem(x)
-        x = self.swin(x)
-        return self.fc(x)
-
-
-class EfficientNet(nn.Module):
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.backbone = timm.create_model(
-            "tf_efficientnetv2_m", pretrained=pretrained, num_classes=0, in_chans=3)
-        self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
-
-    def forward(self, x):
-        return self.classifier(self.backbone(x))
-
-
-## Add a Vit large model
-class ViT(nn.Module):
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.backbone = timm.create_model(
-            "vit_large_patch16_224", pretrained=pretrained, num_classes=0, in_chans=3)
-        self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
-
-    def forward(self, x):
-        return self.classifier(self.backbone(x))
-    
-class HOptimus1(nn.Module):
-    """
-    H-Optimus-1: State-of-the-art pathology foundation model (ViT-Large/16).
-    Pretrained on large-scale histopathology data by Bioptimus.
-    Loaded via timm from HuggingFace Hub.
-    """
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.backbone = timm.create_model(
-            "hf-hub:bioptimus/H-optimus-0",
-            pretrained=pretrained,
-            num_classes=0,       # remove default head, use as feature extractor
-            init_values=1e-5,
-            dynamic_img_size=False,
-        )
-        # ViT-L/16 outputs 1024-dim features
-        embed_dim = self.backbone.num_features  # 1024
-        self.classifier = ClassificationHead(embed_dim, num_classes, dropout)
-
-    def forward(self, x):
-        features = self.backbone(x)
-        return self.classifier(features)
-
-MODEL_REGISTRY = {
-    'SwinTransformer': SwinTransformer,
-    'HybridSwin': HybridSwin,
-    'EfficientNet': EfficientNet,
-    'HOptimus1': HOptimus1,
-    'ViT': ViT,
-}
-
-# Models that require their own normalization / transforms
-HOPTIMUS_MODELS = {'HOptimus1'}
-
-# ============================================================================
-# MIXUP
-# ============================================================================
-
-def mixup_data(x, y, alpha=0.2):
-    lam = np.random.beta(alpha, alpha) if alpha > 0 else 1
-    index = torch.randperm(x.size(0)).to(x.device)
-    mixed_x = lam * x + (1 - lam) * x[index]
-    return mixed_x, y, y[index], lam
-
-
-def mixup_criterion(criterion, pred, y_a, y_b, lam):
-    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
-
-
-# ============================================================================
-# TTA
-# ============================================================================
-
-def predict_proba_with_tta(model, images, device, n_tta=5):
-    model.eval()
-    preds = []
-    with torch.no_grad():
-        preds.append(torch.softmax(model(images), dim=1))
-        if n_tta > 1:
-            preds.append(torch.softmax(model(torch.flip(images, dims=[3])), dim=1))
-        if n_tta > 2:
-            preds.append(torch.softmax(model(torch.flip(images, dims=[2])), dim=1))
-        if n_tta > 3:
-            preds.append(torch.softmax(model(torch.rot90(images, k=1, dims=[2, 3])), dim=1))
-        if n_tta > 4:
-            preds.append(torch.softmax(model(torch.rot90(images, k=3, dims=[2, 3])), dim=1))
-    return torch.stack(preds, dim=0).mean(dim=0)
-
-
-# ============================================================================
-# TRAINING FUNCTIONS
-# ============================================================================
-
-def train_one_epoch(model, loader, criterion, optimizer, device, epoch, use_mixup=True):
-    model.train()
-    running_loss = 0.0
-    all_preds, all_labels = [], []
-
-    pbar = tqdm(loader, desc=f"  Epoch {epoch} [TRAIN]", leave=False)
-    for images, labels in pbar:
-        images, labels = images.to(device), labels.to(device)
-
-        if use_mixup and np.random.rand() > 0.5:
-            images, labels_a, labels_b, lam = mixup_data(images, labels, alpha=0.2)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = mixup_criterion(criterion, outputs, labels_a, labels_b, lam)
-            preds = outputs.argmax(dim=1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels_a.cpu().numpy())
-        else:
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            preds = outputs.argmax(dim=1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item()
-        pbar.set_postfix({'loss': f'{loss.item():.4f}'})
-
-    return running_loss / len(loader), accuracy_score(all_labels, all_preds), f1_score(all_labels, all_preds, average='macro')
-
-
-def validate_one_epoch(model, loader, criterion, device, epoch):
-    model.eval()
-    running_loss = 0.0
-    all_preds, all_labels = [], []
-
-    with torch.no_grad():
-        pbar = tqdm(loader, desc=f"  Epoch {epoch} [VAL]", leave=False)
-        for images, labels in pbar:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            running_loss += loss.item()
-            preds = outputs.argmax(dim=1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-
-    return (running_loss / len(loader),
-            accuracy_score(all_labels, all_preds),
-            f1_score(all_labels, all_preds, average='macro'),
-            all_preds, all_labels)
-
-
-def extract_oof_probabilities(model, loader, device, n_tta=5):
-    """Extract probability predictions for OOF samples using TTA."""
-    model.eval()
-    all_probs = []
-
-    for images, _ in tqdm(loader, desc="  Extracting OOF probs", leave=False):
-        images = images.to(device)
-        probs = predict_proba_with_tta(model, images, device, n_tta=n_tta)
-        all_probs.append(probs.cpu().numpy())
-
-    return np.vstack(all_probs)
-
-
-def extract_test_probabilities(model, loader, device, n_tta=5):
-    """Extract probability predictions for test samples using TTA."""
-    model.eval()
-    all_probs = []
-    all_filenames = []
-
-    for images, filenames in tqdm(loader, desc="  Extracting test probs", leave=False):
-        images = images.to(device)
-        probs = predict_proba_with_tta(model, images, device, n_tta=n_tta)
-        all_probs.append(probs.cpu().numpy())
-        all_filenames.extend(filenames)
-
-    return np.vstack(all_probs), all_filenames
 
 # ============================================================================
 # K-FOLD TRAINING FOR A SINGLE CONFIG
@@ -724,45 +176,19 @@ def train_kfold(config, train_df, test_df, num_classes, class_weights,
 
     return oof_probs, test_probs_avg, test_filenames, fold_metrics
 
-
-
-# ============================================================================
-# VISUALIZATION
-# ============================================================================
-
-def plot_oof_confusion_matrix(oof_labels, oof_preds, class_names, config_key, save_dir):
-    os.makedirs(save_dir, exist_ok=True)
-    cm = confusion_matrix(oof_labels, oof_preds)
-    cm_pct = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=class_names,
-                yticklabels=class_names, ax=ax1)
-    ax1.set_title(f'{config_key} OOF — Counts')
-    ax1.set_ylabel('True'); ax1.set_xlabel('Predicted')
-    plt.setp(ax1.get_xticklabels(), rotation=45, ha='right')
-
-    sns.heatmap(cm_pct, annot=True, fmt='.1f', cmap='RdYlGn', xticklabels=class_names,
-                yticklabels=class_names, ax=ax2, vmin=0, vmax=100)
-    ax2.set_title(f'{config_key} OOF — %')
-    ax2.set_ylabel('True'); ax2.set_xlabel('Predicted')
-    plt.setp(ax2.get_xticklabels(), rotation=45, ha='right')
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f'{config_key}_oof_cm.png'), dpi=200, bbox_inches='tight')
-    plt.close()
-
-
 # ============================================================================
 # MAIN
 # ============================================================================
 
-def main():
+def main(config_idx: int | None = None):
     print(f"\n{'='*70}")
     print(f"WBCBench 2026 — K-FOLD TRAINING PIPELINE")
     print(f"Folds: {cfg.N_FOLDS} | Seed: {cfg.SEED} | Device: {cfg.DEVICE}")
     print(f"{'='*70}\n")
-
+    if config_idx is not None:
+        configs = [cfg.CONFIGS[config_idx]]
+    else:
+        configs = cfg.CONFIGS
     # Load data
     train_df, test_df, class_names, num_classes, label2name, name2label = load_data(cfg.DATA_PATH)
     class_weights = compute_custom_class_weights(num_classes, name2label, cfg.DEVICE)
@@ -781,7 +207,7 @@ def main():
     # Train all configs
     all_results = {}
 
-    for config in cfg.CONFIGS:
+    for config in configs:
         config_key = f"{config['model']}_{config['loss']}"
         try:
             oof_probs, test_probs_avg, test_filenames, fold_metrics = train_kfold(
@@ -863,4 +289,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config_idx", type=int, default=None)
+    args = ap.parse_args()
+    main(config_idx=args.config_idx)

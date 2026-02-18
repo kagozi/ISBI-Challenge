@@ -1,0 +1,69 @@
+# ci/train-wbcbench-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wbcbench-array
+spec:
+  completions: 15
+  parallelism: 4 
+  completionMode: Indexed
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: train
+          image: ghcr.io/<YOUR_GH_ORG_OR_USER>/<YOUR_REPO>:latest
+          imagePullPolicy: Always
+
+          env:
+            - name: PVC_ROOT
+              value: /pvc
+
+            # HuggingFace token from Secret
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: huggingface-secret
+                  key: HF_TOKEN
+            - name: HUGGINGFACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: huggingface-secret
+                  key: HUGGINGFACE_HUB_TOKEN
+
+            # Avoid putting HF cache on CephFS (many small files)
+            - name: HF_HOME
+              value: /tmp/hf
+            - name: TRANSFORMERS_CACHE
+              value: /tmp/hf/transformers
+            - name: HF_HUB_DISABLE_TELEMETRY
+              value: "1"
+
+          command: ["bash", "-lc"]
+          args:
+            - |
+              set -e
+              nvidia-smi || true
+
+              cd /pvc/code
+              mkdir -p /pvc/outputs/logs
+
+              echo "Running config idx: ${JOB_COMPLETION_INDEX}"
+              python main_kfold.py --config_idx ${JOB_COMPLETION_INDEX} 2>&1 | tee /pvc/outputs/logs/run_${JOB_COMPLETION_INDEX}.log
+
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+            requests:
+              nvidia.com/gpu: 1
+
+          volumeMounts:
+            - name: wbcbench-vol
+              mountPath: /pvc
+
+      volumes:
+        - name: wbcbench-vol
+          persistentVolumeClaim:
+            claimName: wbcbench-pvc

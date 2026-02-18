@@ -7,8 +7,6 @@ Integrated champion solution techniques:
 3. Probability-based Ensemble ✓
 4. Simplified Preprocessing ✓
 5. AutoGluon Meta-Ensemble ✓
-
-Expected improvement: +15-20% F1 over baseline
 """
 
 import os

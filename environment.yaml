@@ -1,3 +1,4 @@
+# environment.yaml
 name: wbc_challenge
 channels:
   - pytorch

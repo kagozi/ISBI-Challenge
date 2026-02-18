@@ -1,329 +1,26 @@
 """
-Standalone Ensemble Strategy Tester (K-Fold Version)
-=====================================================
-Run this script after main_kfold.py to test all ensemble combinations
-using out-of-fold predictions (no leakage).
-
 For test submissions, averages predictions across all K folds per model.
-
-Usage:
-    python test_ensembles_kfold.py
 """
 
 import os
-import glob
-import json
 import pandas as pd
-import numpy as np
-from tqdm import tqdm
 import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from sklearn.metrics import accuracy_score, f1_score, classification_report
-import timm
-from PIL import Image
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
-import cv2
+from torch.utils.data import DataLoader
 from itertools import combinations
-
-# ============================================================================
-# MODEL DEFINITIONS
-# ============================================================================
-
-class ClassificationHead(nn.Module):
-    def __init__(self, in_dim, num_classes, dropout=0.4):
-        super().__init__()
-        self.head = nn.Sequential(
-            nn.BatchNorm1d(in_dim),
-            nn.Dropout(dropout),
-            nn.Linear(in_dim, 512),
-            nn.GELU(),
-            nn.BatchNorm1d(512),
-            nn.Dropout(dropout / 2),
-            nn.Linear(512, num_classes)
-        )
-
-    def forward(self, x):
-        return self.head(x)
-
-
-class SwinTransformer(nn.Module):
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.backbone = timm.create_model("swin_base_patch4_window7_224",
-                                         pretrained=False, num_classes=0, in_chans=3)
-        self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
-
-    def forward(self, x):
-        return self.classifier(self.backbone(x))
-
-
-class SEBlock(nn.Module):
-    def __init__(self, channels, reduction=16):
-        super().__init__()
-        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(channels, channels // reduction),
-            nn.ReLU(),
-            nn.Linear(channels // reduction, channels),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        batch, channels, _, _ = x.size()
-        scale = self.global_avg_pool(x).view(batch, channels)
-        scale = self.fc(scale).view(batch, channels, 1, 1)
-        return x * scale
-
-
-class HybridSwin(nn.Module):
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.conv_stem = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(64), nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(128), nn.ReLU(),
-            SEBlock(128),
-            nn.Conv2d(128, 3, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(3), nn.ReLU()
-        )
-        self.swin = timm.create_model('swin_base_patch4_window7_224', pretrained=False, num_classes=512)
-        self.fc = nn.Sequential(nn.Dropout(0.3), nn.Linear(512, num_classes))
-
-    def forward(self, x):
-        x = self.conv_stem(x)
-        x = self.swin(x)
-        return self.fc(x)
-
-
-class EfficientNet(nn.Module):
-    def __init__(self, num_classes, dropout=0.4, pretrained=True):
-        super().__init__()
-        self.backbone = timm.create_model(
-            "tf_efficientnetv2_m", pretrained=False, num_classes=0, in_chans=3)
-        self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
-
-    def forward(self, x):
-        return self.classifier(self.backbone(x))
-
-
-MODEL_REGISTRY = {
-    'SwinTransformer': SwinTransformer,
-    'HybridSwin': HybridSwin,
-    'EfficientNet': EfficientNet,
-}
-
-
-# ============================================================================
-# DATA PREPARATION
-# ============================================================================
-
-def advanced_clahe_preprocessing(image):
-    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    l_clahe = clahe.apply(l)
-    lab_clahe = cv2.merge([l_clahe, a, b])
-    return cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2RGB)
-
-
-def get_val_transform():
-    return A.Compose([
-        A.Resize(224, 224),
-        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ToTensorV2(),
-    ])
-
-
-class BloodDataset(Dataset):
-    def __init__(self, df, transform=None, is_test=False):
-        self.df = df.reset_index(drop=True)
-        self.transform = transform
-        self.is_test = is_test
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        img_path = os.path.join(row["img_dir"], row["filename"])
-        image = np.array(Image.open(img_path).convert("RGB"))
-
-        if self.transform:
-            image = self.transform(image=image)["image"]
-
-        if self.is_test:
-            return image, row["filename"]
-
-        label = torch.tensor(row["label_id"], dtype=torch.long)
-        return image, label
-
-
-# ============================================================================
-# TTA
-# ============================================================================
-
-def predict_proba_with_tta(model, images, device, n_tta=5):
-    model.eval()
-    preds = []
-    with torch.no_grad():
-        preds.append(torch.softmax(model(images), dim=1))
-        if n_tta > 1:
-            preds.append(torch.softmax(model(torch.flip(images, dims=[3])), dim=1))
-        if n_tta > 2:
-            preds.append(torch.softmax(model(torch.flip(images, dims=[2])), dim=1))
-        if n_tta > 3:
-            preds.append(torch.softmax(model(torch.rot90(images, k=1, dims=[2, 3])), dim=1))
-        if n_tta > 4:
-            preds.append(torch.softmax(model(torch.rot90(images, k=3, dims=[2, 3])), dim=1))
-    return torch.stack(preds, dim=0).mean(dim=0)
-
-
-# ============================================================================
-# OOF-BASED ENSEMBLE EVALUATION (NO LEAKAGE)
-# ============================================================================
-
-def evaluate_ensemble_oof(oof_probs_dict, labels, num_classes, weights=None):
-    """
-    Evaluate an ensemble using precomputed OOF probabilities.
-    No model inference needed — pure numpy, instant.
-
-    Args:
-        oof_probs_dict: {config_key: np.array of shape (N, num_classes)}
-        labels: np.array of true labels (N,)
-        weights: optional {config_key: weight} dict
-    Returns:
-        f1, acc, preds
-    """
-    model_names = list(oof_probs_dict.keys())
-
-    if weights is None:
-        weights = {name: 1.0 / len(model_names) for name in model_names}
-
-    s = sum(weights[n] for n in model_names)
-    weights = {n: weights[n] / s for n in model_names}
-
-    ensemble_probs = np.zeros_like(list(oof_probs_dict.values())[0])
-    for name in model_names:
-        ensemble_probs += weights[name] * oof_probs_dict[name]
-
-    preds = ensemble_probs.argmax(axis=1)
-    f1 = f1_score(labels, preds, average='macro')
-    acc = accuracy_score(labels, preds)
-
-    return f1, acc, preds
-
-
-def generate_submission_from_test_probs(test_probs_dict, test_filenames, label2name,
-                                        output_path, weights=None):
-    """
-    Generate submission using precomputed averaged test probabilities.
-    No model inference needed.
-    """
-    model_names = list(test_probs_dict.keys())
-
-    if weights is None:
-        weights = {name: 1.0 / len(model_names) for name in model_names}
-
-    s = sum(weights[n] for n in model_names)
-    weights = {n: weights[n] / s for n in model_names}
-
-    ensemble_probs = np.zeros_like(list(test_probs_dict.values())[0])
-    for name in model_names:
-        ensemble_probs += weights[name] * test_probs_dict[name]
-
-    final_preds = ensemble_probs.argmax(axis=1)
-    pred_labels = [label2name[int(p)] for p in final_preds]
-
-    submission_df = pd.DataFrame({"ID": test_filenames, "Target": pred_labels})
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    submission_df.to_csv(output_path, index=False)
-
-    return submission_df
-
-
-# ============================================================================
-# LIVE INFERENCE ENSEMBLE (for TTA comparison on test set)
-# ============================================================================
-
-def generate_submission_live(models_by_fold, test_loader, device, label2name,
-                             output_path, weights=None, use_tta=True, n_tta=5):
-    """
-    Generate test submission by running inference with all fold checkpoints.
-    For each config, averages predictions across all folds.
-    Then ensembles across configs with given weights.
-    """
-    config_names = list(models_by_fold.keys())
-
-    if weights is None:
-        weights = {name: 1.0 / len(config_names) for name in config_names}
-    s = sum(weights[n] for n in config_names)
-    weights = {n: weights[n] / s for n in config_names}
-
-    all_ids = []
-    all_probs = None
-
-    for images, ids in tqdm(test_loader, desc="Live inference", leave=False):
-        images = images.to(device)
-        all_ids.extend(list(ids))
-
-        batch_ensemble = None
-
-        for config_name in config_names:
-            fold_models = models_by_fold[config_name]
-            n_folds = len(fold_models)
-
-            # Average across folds for this config
-            fold_avg = None
-            for model in fold_models:
-                if use_tta:
-                    probs = predict_proba_with_tta(model, images, device, n_tta=n_tta)
-                else:
-                    model.eval()
-                    with torch.no_grad():
-                        probs = torch.softmax(model(images), dim=1)
-
-                fold_avg = probs if fold_avg is None else fold_avg + probs
-
-            fold_avg = fold_avg / n_folds
-
-            w = weights[config_name]
-            batch_ensemble = w * fold_avg if batch_ensemble is None else batch_ensemble + w * fold_avg
-
-        batch_ensemble = batch_ensemble.detach().cpu()
-        all_probs = batch_ensemble if all_probs is None else torch.cat([all_probs, batch_ensemble], dim=0)
-
-    final_preds = all_probs.argmax(dim=1).numpy()
-    pred_labels = [label2name[int(p)] for p in final_preds]
-
-    submission_df = pd.DataFrame({"ID": all_ids, "Target": pred_labels})
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    submission_df.to_csv(output_path, index=False)
-
-    return submission_df
-
-
+from models import MODEL_REGISTRY
+from dataloader import get_val_transform, BloodDataset
+from utils import evaluate_ensemble_oof, generate_submission_from_test_probs, generate_submission_live
 # ============================================================================
 # MAIN
 # ============================================================================
-
+from config import Config
+cfg = Config()
 def main():
     # Configuration
-    DATA_PATH = '../data'
-    MODEL_DIR = 'models_kfold'
-    OOF_DIR = 'oof_predictions'
-    TEST_PRED_DIR = 'test_predictions'
-    OUTPUT_DIR = 'ensemble_results_kfold'
-    N_FOLDS = 5
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = cfg.DEVICE
     print(f"Using device: {device}\n")
-
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
+    os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
     # ========================================================================
     # STEP 1: Load class info
     # ========================================================================
@@ -331,15 +28,15 @@ def main():
     print("STEP 1: Loading Data")
     print("="*80)
 
-    PHASE1_IMG_DIR = os.path.join(DATA_PATH, "phase1")
-    PHASE2_TRAIN_IMG_DIR = os.path.join(DATA_PATH, "phase2/train")
-    PHASE2_EVAL_IMG_DIR = os.path.join(DATA_PATH, "phase2/eval")
-    PHASE2_TEST_IMG_DIR = os.path.join(DATA_PATH, "phase2/test")
+    PHASE1_IMG_DIR = os.path.join(cfg.DATA_PATH, "phase1")
+    PHASE2_TRAIN_IMG_DIR = os.path.join(cfg.DATA_PATH, "phase2/train")
+    PHASE2_EVAL_IMG_DIR = os.path.join(cfg.DATA_PATH, "phase2/eval")
+    PHASE2_TEST_IMG_DIR = os.path.join(cfg.DATA_PATH, "phase2/test")
 
-    phase1_df = pd.read_csv(os.path.join(DATA_PATH, "phase1_label.csv"))
-    phase2_train_df = pd.read_csv(os.path.join(DATA_PATH, "phase2_train.csv"))
-    phase2_eval_df = pd.read_csv(os.path.join(DATA_PATH, "phase2_eval.csv"))
-    phase2_test_df = pd.read_csv(os.path.join(DATA_PATH, "phase2_test.csv"))
+    phase1_df = pd.read_csv(os.path.join(cfg.DATA_PATH, "phase1_label.csv"))
+    phase2_train_df = pd.read_csv(os.path.join(cfg.DATA_PATH, "phase2_train.csv"))
+    phase2_eval_df = pd.read_csv(os.path.join(cfg.DATA_PATH, "phase2_eval.csv"))
+    phase2_test_df = pd.read_csv(os.path.join(cfg.DATA_PATH, "phase2_test.csv"))
 
     for df in [phase1_df, phase2_train_df, phase2_eval_df, phase2_test_df]:
         df.drop(columns=[c for c in df.columns if c.startswith("Unnamed")], errors="ignore", inplace=True)
@@ -384,8 +81,8 @@ def main():
     ]
 
     for config_key in model_configs:
-        oof_path = os.path.join(OOF_DIR, f'oof_{config_key}.csv')
-        test_path = os.path.join(TEST_PRED_DIR, f'test_{config_key}.csv')
+        oof_path = os.path.join(cfg.OOF_DIR, f'oof_{config_key}.csv')
+        test_path = os.path.join(cfg.TEST_PRED_DIR, f'test_{config_key}.csv')
 
         if not os.path.exists(oof_path):
             print(f"  ⚠️  Skipping {config_key} (OOF file not found)")
@@ -567,7 +264,7 @@ def main():
 
         # Generate submission from precomputed test probs
         submission_file = f"submission_{strategy['name']}.csv"
-        submission_path = os.path.join(OUTPUT_DIR, submission_file)
+        submission_path = os.path.join(cfg.OUTPUT_DIR, submission_file)
         generate_submission_from_test_probs(
             subset_test, test_filenames, label2name, submission_path, weights)
 
@@ -614,8 +311,8 @@ def main():
             print(f"  ⚠️  Could not find architecture for {config_key}, skipping")
             continue
         fold_models = []
-        for fold in range(1, N_FOLDS + 1):
-            path = os.path.join(MODEL_DIR, f"{config_key}_fold{fold}.pth")
+        for fold in range(1, cfg.N_FOLDS + 1):
+            path = os.path.join(cfg.SAVE_DIR, f"{config_key}_fold{fold}.pth")
             if os.path.exists(path):
                 model = MODEL_REGISTRY[arch_name](num_classes=num_classes).to(device)
                 ckpt = torch.load(path, map_location=device)
@@ -627,7 +324,7 @@ def main():
     
     if models_by_fold:
         weights = {n: model_scores[n] for n in models_by_fold}
-        tta_path = os.path.join(OUTPUT_DIR, f"submission_{best_strategy['strategy']}_TTA.csv")
+        tta_path = os.path.join(cfg.OUTPUT_DIR, f"submission_{best_strategy['strategy']}_TTA.csv")
         generate_submission_live(models_by_fold, test_loader, device, label2name,
                                  tta_path, weights=weights, use_tta=True, n_tta=5)
         print(f"  ✓ TTA submission saved: {tta_path}")
@@ -636,7 +333,7 @@ def main():
     # SUMMARY
     # ========================================================================
     results_df = pd.DataFrame(results).sort_values('oof_f1', ascending=False)
-    results_df.to_csv(os.path.join(OUTPUT_DIR, 'ensemble_summary_kfold.csv'), index=False)
+    results_df.to_csv(os.path.join(cfg.OUTPUT_DIR, 'ensemble_summary_kfold.csv'), index=False)
 
     print("\n" + "="*80)
     print("ENSEMBLE RESULTS SUMMARY (K-Fold OOF — No Leakage)")
@@ -670,8 +367,8 @@ def main():
     for i, (name, score) in enumerate(sorted_models, 1):
         print(f"  {i}. {name:40s} F1: {score:.4f}")
 
-    print(f"\n✅ All results saved to: {OUTPUT_DIR}/")
-    print(f"💡 Submit: {OUTPUT_DIR}/{best['submission_file']}")
+    print(f"\n✅ All results saved to: {cfg.OUTPUT_DIR}/")
+    print(f"💡 Submit: {cfg.OUTPUT_DIR}/{best['submission_file']}")
     print("="*80)
 
 

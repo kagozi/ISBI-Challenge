@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wbcbench-uploader
+spec:
+  containers:
+    - name: uploader
+      image: ubuntu:22.04
+      command: ["bash", "-lc", "sleep infinity"]
+      volumeMounts:
+        - name: wbcbench-vol
+          mountPath: /pvc
+  volumes:
+    - name: wbcbench-vol
+      persistentVolumeClaim:
+        claimName: wbcbench-pvc
