@@ -4,27 +4,28 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /workspace
 
 RUN apt-get update && apt-get install -y \
-    python3.10 python3-pip git ffmpeg \
-    libgl1 libglib2.0-0 \
+    python3.10 python3-pip git \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python
-
 RUN python -m pip install --upgrade pip
 
-# PyTorch CUDA 12.1 wheels
+# PyTorch CUDA 12.1
 RUN pip install --index-url https://download.pytorch.org/whl/cu121 \
-    torch torchvision torchaudio
+    torch torchvision
 
-# Your deps (add HF + timm + albu)
+# Only what your training code needs
 RUN pip install \
-    numpy scipy pandas tqdm pyyaml rich click \
-    opencv-python-headless pillow matplotlib seaborn \
-    scikit-learn einops sentencepiece regex \
-    omegaconf hydra-core tensorboard \
-    timm>=0.9.0 albumentations>=1.3.0 safetensors \
+    numpy scipy pandas tqdm \
+    scikit-learn \
+    matplotlib seaborn \
+    pillow \
+    opencv-python-headless \
+    timm>=0.9.0 \
+    albumentations>=1.3.0 \
+    einops safetensors \
     huggingface_hub
 
-# Copy code (adjust to your repo layout)
 COPY . /workspace
 ENV PYTHONPATH=/workspace

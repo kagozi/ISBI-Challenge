@@ -39,11 +39,12 @@ spec:
 
             # Keep HF cache off CephFS (avoid many-small-files on PVC)
             - name: HF_HOME
-              value: /tmp/hf
+              value: /pvc/cache/hf
             - name: TRANSFORMERS_CACHE
-              value: /tmp/hf/transformers
+              value: /pvc/cache/hf/transformers
             - name: HF_HUB_DISABLE_TELEMETRY
               value: "1"
+
 
             # Make sure every pod knows its index (Indexed jobs expose this)
             - name: JOB_COMPLETION_INDEX
@@ -71,14 +72,16 @@ spec:
                 2>&1 | tee "/pvc/outputs/logs/run_${JOB_COMPLETION_INDEX}.log"
 
           resources:
-            limits:
-              nvidia.com/gpu: 1
-              memory: 32Gi
-              cpu: "6"
             requests:
               nvidia.com/gpu: 1
-              memory: 16Gi
               cpu: "4"
+              memory: 16Gi
+              ephemeral-storage: 20Gi
+            limits:
+              nvidia.com/gpu: 1
+              cpu: "6"
+              memory: 32Gi
+              ephemeral-storage: 40Gi
 
           volumeMounts:
             - name: wbcbench-vol
