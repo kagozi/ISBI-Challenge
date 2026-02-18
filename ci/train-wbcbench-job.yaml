@@ -5,12 +5,16 @@ metadata:
   name: wbcbench-array
 spec:
   completions: 15
-  parallelism: 4 
+  parallelism: 4
   completionMode: Indexed
   backoffLimit: 0
   template:
+    metadata:
+      labels:
+        app: wbcbench-array
     spec:
       restartPolicy: Never
+      terminationGracePeriodSeconds: 30
 
       containers:
         - name: train
@@ -21,7 +25,7 @@ spec:
             - name: PVC_ROOT
               value: /pvc
 
-            # HuggingFace token from Secret
+            # HuggingFace auth (for HOptimus1)
             - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -33,7 +37,7 @@ spec:
                   name: huggingface-secret
                   key: HUGGINGFACE_HUB_TOKEN
 
-            # Avoid putting HF cache on CephFS (many small files)
+            # Keep HF cache off CephFS (avoid many-small-files on PVC)
             - name: HF_HOME
               value: /tmp/hf
             - name: TRANSFORMERS_CACHE
@@ -41,26 +45,40 @@ spec:
             - name: HF_HUB_DISABLE_TELEMETRY
               value: "1"
 
+            # Make sure every pod knows its index (Indexed jobs expose this)
+            - name: JOB_COMPLETION_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+
           command: ["bash", "-lc"]
           args:
             - |
-              set -e
+              set -euo pipefail
               nvidia-smi || true
 
-              cd /pvc/code
+              export PVC_ROOT=/pvc
+
+              # Basic sanity checks
+              test -d /pvc/data || (echo "❌ /pvc/data not found. Did you upload data to the PVC?" && exit 1)
+              test -f /workspace/main_kfold.py || (echo "❌ /workspace/main_kfold.py not found in image." && exit 1)
+
               mkdir -p /pvc/outputs/logs
+              cd /workspace
 
               echo "Running config idx: ${JOB_COMPLETION_INDEX}"
-              python main_kfold.py --config_idx ${JOB_COMPLETION_INDEX} 2>&1 | tee /pvc/outputs/logs/run_${JOB_COMPLETION_INDEX}.log
+              python main_kfold.py --config_idx "${JOB_COMPLETION_INDEX}" \
+                2>&1 | tee "/pvc/outputs/logs/run_${JOB_COMPLETION_INDEX}.log"
 
           resources:
             limits:
               nvidia.com/gpu: 1
               memory: 32Gi
+              cpu: "6"
             requests:
               nvidia.com/gpu: 1
               memory: 16Gi
-              cpu: 4
+              cpu: "4"
 
           volumeMounts:
             - name: wbcbench-vol
