@@ -253,7 +253,7 @@ def train_one_epoch(
     running_loss = 0.0
     all_preds, all_labels = [], []
 
-    use_amp = amp and (device.type == "cuda")
+    use_amp = amp and (device == "cuda")
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
     grad_accum_steps = max(1, int(grad_accum_steps))
