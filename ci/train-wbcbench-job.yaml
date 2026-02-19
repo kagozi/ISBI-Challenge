@@ -24,6 +24,10 @@ spec:
                     operator: NotIn
                     values:
                       - k8s-gpu-01.calit2.optiputer.net
+                  - key: nvidia.com/gpu.memory
+                    operator: Gt
+                    values:
+                      - "12000"
 
       containers:
         - name: train
