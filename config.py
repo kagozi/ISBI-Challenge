@@ -6,35 +6,35 @@
 import torch
 import os
 import argparse
-# class Config:
-#     DATA_PATH = '../data'
-#     N_FOLDS = 5
-#     SEED = 42
-#     IMG_SIZE = 224
-#     BATCH_SIZE = 8
-#     NUM_WORKERS = 4
-#     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-#     # Output directories
-#     SAVE_DIR = 'models_kfold'
-#     OOF_DIR = 'oof_predictions'
-#     TEST_PRED_DIR = 'test_predictions'
-#     PLOT_DIR = 'plots_kfold'
-#     SUBMISSION_DIR = 'submissions_kfold'
-#     OUTPUT_DIR = 'ensemble_results_kfold'
 class Config:
-    PVC_ROOT = os.environ.get("PVC_ROOT", "/pvc")
+    DATA_PATH = '../data'
+    N_FOLDS = 5
+    SEED = 42
+    IMG_SIZE = 224
+    BATCH_SIZE = 8
+    NUM_WORKERS = 4
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-    DATA_PATH = os.path.join(PVC_ROOT, "data")
+    # Output directories
+    SAVE_DIR = 'models_kfold'
+    OOF_DIR = 'oof_predictions'
+    TEST_PRED_DIR = 'test_predictions'
+    PLOT_DIR = 'plots_kfold'
+    SUBMISSION_DIR = 'submissions_kfold'
+    OUTPUT_DIR = 'ensemble_results_kfold'
+# class Config:
+#     PVC_ROOT = os.environ.get("PVC_ROOT", "/pvc")
 
-    # Output directories (all on the PVC)
-    OUT_ROOT = os.path.join(PVC_ROOT, "outputs")
-    SAVE_DIR = os.path.join(OUT_ROOT, "models_kfold")
-    OOF_DIR = os.path.join(OUT_ROOT, "oof_predictions")
-    TEST_PRED_DIR = os.path.join(OUT_ROOT, "test_predictions")
-    PLOT_DIR = os.path.join(OUT_ROOT, "plots_kfold")
-    SUBMISSION_DIR = os.path.join(OUT_ROOT, "submissions_kfold")
-    OUTPUT_DIR = os.path.join(OUT_ROOT, "ensemble_results_kfold")
+#     DATA_PATH = os.path.join(PVC_ROOT, "data")
+
+#     # Output directories (all on the PVC)
+#     OUT_ROOT = os.path.join(PVC_ROOT, "outputs")
+#     SAVE_DIR = os.path.join(OUT_ROOT, "models_kfold")
+#     OOF_DIR = os.path.join(OUT_ROOT, "oof_predictions")
+#     TEST_PRED_DIR = os.path.join(OUT_ROOT, "test_predictions")
+#     PLOT_DIR = os.path.join(OUT_ROOT, "plots_kfold")
+#     SUBMISSION_DIR = os.path.join(OUT_ROOT, "submissions_kfold")
+#     OUTPUT_DIR = os.path.join(OUT_ROOT, "ensemble_results_kfold")
 
     N_FOLDS = 5
     SEED = 42
