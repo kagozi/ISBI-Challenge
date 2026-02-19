@@ -205,7 +205,7 @@ def train_one_epoch(model, loader, criterion, optimizer, device, epoch, use_mixu
     model.train()
     running_loss = 0.0
     all_preds, all_labels = [], []
-    scaler = torch.cuda.amp.GradScaler(enabled=(device.type == "cuda"))
+    scaler = torch.cuda.amp.GradScaler(enabled=(device == "cuda"))
     pbar = tqdm(loader, desc=f"  Epoch {epoch} [TRAIN]", leave=False)
     for images, labels in pbar:
         images, labels = images.to(device), labels.to(device)
