@@ -49,8 +49,9 @@ def setup_huggingface_auth() -> bool:
     if not token:
         return False
     try:
-        from huggingface_hub import login
-        login(token=token, add_to_git_credential=False)
+        from huggingface_hub import HfFolder
+        # token = login(token=token, add_to_git_credential=False)
+        token = HfFolder.get_token()
         return True
     except Exception as e:
         print(f"HF login failed: {e}")
@@ -127,6 +128,8 @@ def get_loss_fn(loss_name, class_weights):
         return FocalLoss()
     elif loss_name == 'focal_weighted':
         return FocalLossWithClassWeights(alpha=class_weights)
+    elif loss_name == 'poly':
+        return PolyLoss(num_classes=len(class_weights), epsilon=1.0, class_weights=class_weights)
     else:
         raise ValueError(f"Unknown loss: {loss_name}")
 

@@ -119,6 +119,17 @@ class HOptimus1(nn.Module):
     def forward(self, x):
         features = self.backbone(x)
         return self.classifier(features)
+    
+
+class VitGiantDino(nn.Module):
+    def __init__(self, num_classes, dropout=0.4, pretrained=True):
+        super().__init__()
+        self.backbone = timm.create_model(
+            "vit_giant_patch14_dinov2.lvd142m", pretrained=pretrained, num_classes=0, in_chans=3)
+        self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
+
+    def forward(self, x):
+        return self.classifier(self.backbone(x))
 
 
 MODEL_REGISTRY = {
@@ -127,6 +138,7 @@ MODEL_REGISTRY = {
     'EfficientNet': EfficientNet,
     'HOptimus1': HOptimus1,
     'ViT': ViT,
+    'VitGiantDino': VitGiantDino,
 }
 
 # Models that require their own normalization / transforms

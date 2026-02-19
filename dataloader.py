@@ -11,6 +11,22 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from sklearn.model_selection import StratifiedKFold
 import cv2
+from albumentations import (
+    Compose,
+    GaussianBlur,
+    HorizontalFlip,
+    MedianBlur,
+    MotionBlur,
+    Normalize,
+    RandomBrightnessContrast,
+    Resize,
+    ShiftScaleRotate,
+    VerticalFlip,
+    CenterCrop,
+    PadIfNeeded,
+    LongestMaxSize
+)
+
 
 from config import Config
 
@@ -122,13 +138,41 @@ def get_val_transform():
         ToTensorV2(),
     ])
 
+train_mini_transform = Compose(
+    [
+
+        LongestMaxSize(max_size=cfg.IMG_SIZE, interpolation=cv2.INTER_LINEAR, always_apply=True),
+        PadIfNeeded(min_height=cfg.IMG_SIZE, min_width=cfg.IMG_SIZE, border_mode=cv2.BORDER_CONSTANT, value=(255, 255, 255), p=1.0),
+        RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.5),
+        VerticalFlip(p=0.5),
+        HorizontalFlip(p=0.5),
+        ShiftScaleRotate(
+            shift_limit=0.2,
+            scale_limit=0.2,
+            rotate_limit=20,
+            interpolation=cv2.INTER_LINEAR,
+            border_mode=cv2.BORDER_CONSTANT,
+            p=1,
+        ),
+        Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ToTensorV2()
+    ]
+)
+
+val_mini_transform = Compose([
+    LongestMaxSize(max_size=cfg.IMG_SIZE, interpolation=cv2.INTER_LINEAR, always_apply=True),  # 等比例缩放，最长边为224
+    PadIfNeeded(min_height=cfg.IMG_SIZE, min_width=cfg.IMG_SIZE, border_mode=cv2.BORDER_CONSTANT, value=(255, 255, 255), p=1.0),
+    Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+    ToTensorV2()
+])
+
 
 # H-Optimus-1 uses its own normalization constants
 def get_train_transform_hoptimus():
     return A.Compose([
         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-        A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
-        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
+            A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
+            A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
         A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.2),
