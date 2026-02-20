@@ -11,7 +11,7 @@ class Config:
     N_FOLDS = 5
     SEED = 42
     IMG_SIZE = 224
-    BATCH_SIZE = 8
+    BATCH_SIZE = 32
     NUM_WORKERS = 4
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -55,7 +55,7 @@ class Config:
 
                 
 
-        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
+        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 5, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal',          'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         

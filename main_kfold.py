@@ -73,8 +73,8 @@ def train_kfold(config, train_df, test_df, num_classes, class_weights,
         train_transform = get_train_transform_hoptimus()
         val_transform = get_val_transform_hoptimus()
     else:
-        train_transform = train_mini_transform
-        val_transform = val_mini_transform
+        train_transform = get_train_transform() 
+        val_transform = get_val_transform()
     n_train = len(train_df)
     n_test = len(test_df)
 
