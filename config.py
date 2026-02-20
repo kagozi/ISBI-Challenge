@@ -10,7 +10,7 @@ class Config:
     DATA_PATH = '../data'
     N_FOLDS = 5
     SEED = 42
-    IMG_SIZE = 392
+    IMG_SIZE = 384
     BATCH_SIZE =32
     NUM_WORKERS = 4
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -61,12 +61,12 @@ class Config:
 
                 
 
-        # {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 5, 'weight_decay': 1e-4},
+        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 5, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal',          'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         
         
-       {'model': 'HybridSwin',      'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+    #    {'model': 'HybridSwin',      'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'HybridSwin',      'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'HybridSwin',      'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         
