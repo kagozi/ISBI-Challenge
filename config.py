@@ -35,13 +35,6 @@ class Config:
 #     PLOT_DIR = os.path.join(OUT_ROOT, "plots_kfold")
 #     SUBMISSION_DIR = os.path.join(OUT_ROOT, "submissions_kfold")
 #     OUTPUT_DIR = os.path.join(OUT_ROOT, "ensemble_results_kfold")
-
-    N_FOLDS = 5
-    SEED = 42
-    IMG_SIZE = 224
-    BATCH_SIZE = 2
-    NUM_WORKERS = 4
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     # Model configs to train
     
     # ── New: SWA settings ──────────────────────────────────────────────────
