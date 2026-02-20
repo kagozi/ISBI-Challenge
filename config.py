@@ -43,6 +43,19 @@ class Config:
     NUM_WORKERS = 4
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     # Model configs to train
+    
+    # ── New: SWA settings ──────────────────────────────────────────────────
+    USE_SWA = True
+    # SWA kicks in after this fraction of epochs (e.g. 0.75 = last 25%)
+    SWA_START_RATIO = 0.75
+    SWA_LR = 1e-5          # low lr for SWA averaging phase
+
+    # ── New: Label smoothing for CE loss ───────────────────────────────────
+    LABEL_SMOOTHING = 0.1  # 0.0 = off, 0.1 is standard
+
+    # ── New: Mixup only in first half of training ──────────────────────────
+    MIXUP_END_RATIO = 0.5  # disable mixup after this fraction of epochs
+    
     CONFIGS = [
         # H-Optimus-1: pathology foundation model (pretrained on large-scale histopathology data by Bioptimus)
         # {'model': 'HOptimus1',       'loss': 'ce',             'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
