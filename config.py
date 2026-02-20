@@ -10,7 +10,7 @@ class Config:
     DATA_PATH = '../data'
     N_FOLDS = 5
     SEED = 42
-    IMG_SIZE = 384
+    IMG_SIZE = 392
     BATCH_SIZE =2
     NUM_WORKERS = 4
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
