@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import timm
 
-
+from config import Config
+cfg = Config()
 # ============================================================================
 # MODEL DEFINITIONS
 # ============================================================================
@@ -67,7 +68,7 @@ class HybridSwin(nn.Module):
             nn.Conv2d(128, 3, kernel_size=1, stride=1, padding=0, bias=False),
             nn.BatchNorm2d(3), nn.ReLU()
         )
-        self.swin = timm.create_model('swin_base_patch4_window7_224', pretrained=pretrained, num_classes=512, dynamic_img_size=True,)
+        self.swin = timm.create_model('swin_base_patch4_window7_224', pretrained=pretrained, num_classes=512, img_size=cfg.IMG_SIZE,)
         self.fc = nn.Sequential(nn.Dropout(0.3), nn.Linear(512, num_classes))
 
     def forward(self, x):
