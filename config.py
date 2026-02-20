@@ -11,7 +11,7 @@ class Config:
     N_FOLDS = 5
     SEED = 42
     IMG_SIZE = 518
-    BATCH_SIZE = 8
+    BATCH_SIZE = 4
     NUM_WORKERS = 4
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
