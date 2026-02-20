@@ -106,9 +106,9 @@ def morphology_on_lab_l(image):
 def get_train_transform():
     return A.Compose([
         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-        A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
-        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
-        A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
+        # A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
+        # A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
+        # A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.2),
         A.Rotate(limit=30, border_mode=cv2.BORDER_REFLECT, p=0.4),
@@ -133,7 +133,7 @@ def get_train_transform():
 def get_val_transform():
     return A.Compose([
         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
+        # A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ToTensorV2(),
     ])
