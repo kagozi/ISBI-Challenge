@@ -68,7 +68,7 @@ class Config:
 
                 
 
-        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 5, 'weight_decay': 1e-4},
+        # {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 5, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal',          'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         
@@ -82,7 +82,7 @@ class Config:
     #     {'model': 'ViT',             'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         
         
-    #     {'model': 'VitGiantDino',     'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        {'model': 'VitGiantDino',     'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'VitGiantDino',     'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'VitGiantDino',     'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     ]
