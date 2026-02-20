@@ -1,13 +1,10 @@
 #!/bin/bash
 #
 # GPU job submission script for SLURM
-# Stage 1: RGB-only Video-to-Gloss Training
-#
-
 ### Job Configuration #########################################################
 
-#SBATCH --job-name=kfold-ensemble-train
-#SBATCH --output=kfold-ensemble-%j.out
+#SBATCH --job-name=swin-kfold-train
+#SBATCH --output=swin-kfold-%j.out
 
 #SBATCH --get-user-env
 
