@@ -127,7 +127,7 @@ class VitGiantDino(nn.Module):
         super().__init__()
         self.backbone = timm.create_model(
             "vit_giant_patch14_dinov2.lvd142m", pretrained=pretrained, num_classes=0, in_chans=3,
-              dynamic_img_size=True,
+            #   dynamic_img_size=True,
             )
         self.classifier = ClassificationHead(self.backbone.num_features, num_classes, dropout)
 
