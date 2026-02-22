@@ -295,14 +295,31 @@ class BloodDataset(Dataset):
     def __len__(self):
         return len(self.df)
 
+    # def __getitem__(self, idx):
+    #     row = self.df.iloc[idx]
+    #     img_path = os.path.join(row["img_dir"], row["filename"])
+    #     image = np.array(Image.open(img_path).convert("RGB")) if isinstance(self.transform, A.Compose) else  Image.open(img_path).convert("RGB")
+
+    #     if self.transform:
+    #         # image = self.transform(image=image)["image"]
+    #         image = self.transform(image)["image"] if isinstance(self.transform, A.Compose) else self.transform(image)
+
+    #     if self.is_test:
+    #         return image, row["filename"]
+
+    #     label = torch.tensor(row["label_id"], dtype=torch.long)
+    #     return image, label
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         img_path = os.path.join(row["img_dir"], row["filename"])
-        image = np.array(Image.open(img_path).convert("RGB")) if isinstance(self.transform, A.Compose) else  Image.open(img_path).convert("RGB")
 
-        if self.transform:
-            # image = self.transform(image=image)["image"]
-            image = self.transform(image)["image"] if isinstance(self.transform, A.Compose) else self.transform(image)
+        image = np.array(Image.open(img_path).convert("RGB"))
+
+        if self.transform is not None:
+            if isinstance(self.transform, A.Compose):
+                image = self.transform(image=image)["image"]
+            else:
+                image = self.transform(image)
 
         if self.is_test:
             return image, row["filename"]
