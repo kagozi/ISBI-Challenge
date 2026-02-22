@@ -202,7 +202,8 @@ class BloodDataset(Dataset):
         image = np.array(Image.open(img_path).convert("RGB"))
 
         if self.transform:
-            image = self.transform(image=image)["image"]
+            # image = self.transform(image=image)["image"]
+            image = self.transform(image)["image"] if isinstance(self.transform, A.Compose) else self.transform(image)
 
         if self.is_test:
             return image, row["filename"]
