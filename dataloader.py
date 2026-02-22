@@ -193,12 +193,12 @@ T = transforms.Compose([
 
 normalizer = torchstain.normalizers.MacenkoNormalizer(backend="torch")
 
-phase1_imgs = sorted(os.listdir("../data/phase1/images"))
+phase1_imgs = sorted(os.listdir("../data/phase1"))
 sample_imgs = random.sample(phase1_imgs, 30)
 
 for img_name in sample_imgs:
     img = cv2.cvtColor(
-        cv2.imread(f"../data/phase1/images/{img_name}"),
+        cv2.imread(f"../data/phase1/{img_name}"),
         cv2.COLOR_BGR2RGB
     )
     normalizer.fit(T(img))
