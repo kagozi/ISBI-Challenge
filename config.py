@@ -61,7 +61,7 @@ class Config:
 
                 
 
-        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 5, 'weight_decay': 1e-4},
+        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 35, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal',          'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         
