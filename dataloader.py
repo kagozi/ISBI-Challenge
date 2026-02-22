@@ -204,18 +204,11 @@ for img_name in sample_imgs:
     
 
 def macenko_normalize_tensor(img_tensor):
-    """
-    img_tensor: torch.Tensor, either (C,H,W) or (H,W,C)
-    Returns: torch.Tensor (C,H,W), ImageNet-normalized
-    """
-
-    # Ensure torch tensor
     if not torch.is_tensor(img_tensor):
         img_tensor = torch.as_tensor(img_tensor)
 
-    # Fix channel order if needed
+    # After ToTensorV2 it's already (C,H,W)
     if img_tensor.ndim == 3 and img_tensor.shape[0] != 3:
-        # HWC -> CHW
         img_tensor = img_tensor.permute(2, 0, 1)
 
     device = img_tensor.device
@@ -224,21 +217,20 @@ def macenko_normalize_tensor(img_tensor):
     mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(3, 1, 1)
     std  = torch.tensor([0.229, 0.224, 0.225], device=device).view(3, 1, 1)
 
-    # Undo ImageNet normalization
-    img = img_tensor * std + mean
+    # Undo ImageNet norm → [0,255]
+    img = (img_tensor * std + mean) * 255.0
 
-    # Scale to [0,255]
-    img = img * 255.0
+    try:
+        img_norm, _, _ = normalizer.normalize(I=img)
+    except Exception:
+        # Macenko can fail on edge-case images (very dark, almost uniform)
+        return img_tensor  # fall back to unnormalized
 
-    # Macenko stain normalization
-    img_norm, _, _ = normalizer.normalize(I=img)
+    # ← Fix: normalizer returns (H,W,C), permute to (C,H,W)
+    if img_norm.ndim == 3 and img_norm.shape[0] != 3:
+        img_norm = img_norm.permute(2, 0, 1)
 
-    # Back to [0,1]
-    img_norm = img_norm / 255.0
-
-    # Re-apply ImageNet normalization
-    img_norm = (img_norm - mean) / std
-
+    img_norm = (img_norm.float() / 255.0 - mean) / std
     return img_norm
 
 def get_train_transform():
