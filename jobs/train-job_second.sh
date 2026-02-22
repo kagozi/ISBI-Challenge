@@ -3,8 +3,8 @@
 # GPU job submission script for SLURM
 ### Job Configuration #########################################################
 
-#SBATCH --job-name=efficientnet-kfold-train
-#SBATCH --output=efficientnet-kfold-%j.out
+#SBATCH --job-name=efficientnet-torchstain-train
+#SBATCH --output=efficientnet-torchstain-%j.out
 
 #SBATCH --get-user-env
 
