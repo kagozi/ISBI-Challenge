@@ -55,13 +55,13 @@ class Config:
         # {'model': 'HOptimus1',       'loss': 'focal',          'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
         # {'model': 'HOptimus1',       'loss': 'focal_weighted', 'lr': 2e-5, 'epochs': 30, 'weight_decay': 1e-4},
         
-        {'model': 'SwinTransformer', 'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        # {'model': 'SwinTransformer', 'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         # {'model': 'SwinTransformer', 'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         # {'model': 'SwinTransformer', 'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
 
                 
 
-        # {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 5, 'weight_decay': 1e-4},
+        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 5, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal',          'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         
