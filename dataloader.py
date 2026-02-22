@@ -125,23 +125,25 @@ def get_val_transform():
     ])
 
 
-train_mini_transform = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomRotation(30),
-    transforms.RandomAffine(degrees=0, shear=15, scale=(0.8, 1.2)),
-    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
-
-val_mini_transform = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+def train_mini_transform():
+    return transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(30),
+        transforms.RandomAffine(degrees=0, shear=15, scale=(0.8, 1.2)),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+def val_mini_transform():
+    return transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
 
 
 # H-Optimus-1 uses its own normalization constants
