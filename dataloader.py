@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
-from PIL import Image
+from PIL import Image, ImageFile
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from sklearn.model_selection import StratifiedKFold
@@ -14,9 +14,8 @@ import cv2
 from torchvision import transforms
 import random
 import torchstain
-
 from config import Config
-
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 cfg = Config()
 # ============================================================================
