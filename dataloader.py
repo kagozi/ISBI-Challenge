@@ -205,19 +205,32 @@ for img_name in sample_imgs:
 
 def macenko_normalize_tensor(img_tensor):
     """
-    img_tensor: torch.Tensor (C,H,W), normalized (ImageNet)
+    img_tensor: torch.Tensor, either (C,H,W) or (H,W,C)
+    Returns: torch.Tensor (C,H,W), ImageNet-normalized
     """
+
+    # Ensure torch tensor
+    if not torch.is_tensor(img_tensor):
+        img_tensor = torch.as_tensor(img_tensor)
+
+    # Fix channel order if needed
+    if img_tensor.ndim == 3 and img_tensor.shape[0] != 3:
+        # HWC -> CHW
+        img_tensor = img_tensor.permute(2, 0, 1)
+
     device = img_tensor.device
+    img_tensor = img_tensor.float()
+
+    mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(3, 1, 1)
+    std  = torch.tensor([0.229, 0.224, 0.225], device=device).view(3, 1, 1)
 
     # Undo ImageNet normalization
-    mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(3,1,1)
-    std  = torch.tensor([0.229, 0.224, 0.225], device=device).view(3,1,1)
     img = img_tensor * std + mean
 
     # Scale to [0,255]
     img = img * 255.0
 
-    # Stain normalization
+    # Macenko stain normalization
     img_norm, _, _ = normalizer.normalize(I=img)
 
     # Back to [0,1]
