@@ -199,7 +199,7 @@ class BloodDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         img_path = os.path.join(row["img_dir"], row["filename"])
-        image = np.array(Image.open(img_path).convert("RGB"))
+        image = np.array(Image.open(img_path).convert("RGB")) if isinstance(self.transform, A.Compose) else  Image.open(img_path).convert("RGB")
 
         if self.transform:
             # image = self.transform(image=image)["image"]
