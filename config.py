@@ -38,7 +38,7 @@ class Config:
     # Model configs to train
     
     # ── New: SWA settings ──────────────────────────────────────────────────
-    USE_SWA = True
+    USE_SWA = False 
     # SWA kicks in after this fraction of epochs (e.g. 0.75 = last 25%)
     SWA_START_RATIO = 0.75
     SWA_LR = 1e-5          # low lr for SWA averaging phase
@@ -61,12 +61,12 @@ class Config:
 
                 
 
-        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
+        # {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal',          'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         
         
-    #    {'model': 'HybridSwin',      'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+       {'model': 'HybridSwin',      'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'HybridSwin',      'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'HybridSwin',      'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         
