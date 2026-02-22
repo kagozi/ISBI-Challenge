@@ -174,13 +174,13 @@ def get_train_transform_hoptimus():
     ])
 
 
-# def get_val_transform_hoptimus():
-#     return A.Compose([
-#         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-#         A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
-#         A.Normalize(mean=(0.707223, 0.578729, 0.703617), std=(0.211883, 0.230117, 0.177517)),
-#         ToTensorV2(),
-#     ])
+def get_val_transform_hoptimus():
+    return A.Compose([
+        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
+        A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
+        A.Normalize(mean=(0.707223, 0.578729, 0.703617), std=(0.211883, 0.230117, 0.177517)),
+        ToTensorV2(),
+    ])
 
 
 
