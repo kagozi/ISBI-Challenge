@@ -3,8 +3,8 @@
 # GPU job submission script for SLURM
 ### Job Configuration #########################################################
 
-#SBATCH --job-name=swin-torchstain-train
-#SBATCH --output=swin-torchstain-%j.out
+#SBATCH --job-name=swin-no-clahe-train
+#SBATCH --output=swin-no-clahe-%j.out
 
 #SBATCH --get-user-env
 

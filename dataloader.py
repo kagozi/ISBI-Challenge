@@ -89,40 +89,40 @@ def morphology_on_lab_l(image):
     return cv2.cvtColor(lab2, cv2.COLOR_LAB2RGB)
 
 
-# def get_train_transform():
-#     return A.Compose([
-#         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-#         A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
-#         A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
-#         A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
-#         A.HorizontalFlip(p=0.5),
-#         A.VerticalFlip(p=0.2),
-#         A.Rotate(limit=30, border_mode=cv2.BORDER_REFLECT, p=0.4),
-#         A.RandomResizedCrop(size=(cfg.IMG_SIZE, cfg.IMG_SIZE), scale=(0.85, 1.0), ratio=(0.95, 1.05), p=0.3),
-#         A.OneOf([
-#             A.ElasticTransform(alpha=10, sigma=4, alpha_affine=3, border_mode=cv2.BORDER_REFLECT, p=1.0),
-#             A.GridDistortion(num_steps=5, distort_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
-#             A.OpticalDistortion(distort_limit=0.07, shift_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
-#         ], p=0.15),
-#         A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.08, p=0.4),
-#         A.HueSaturationValue(hue_shift_limit=8, sat_shift_limit=15, val_shift_limit=10, p=0.25),
-#         A.OneOf([
-#             A.GaussNoise(var_limit=(3.0, 12.0), p=1.0),
-#             A.GaussianBlur(blur_limit=(3, 3), p=1.0),
-#             A.MedianBlur(blur_limit=3, p=1.0),
-#         ], p=0.25),
-#         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-#         ToTensorV2(),
-#     ])
+def get_train_transform():
+    return A.Compose([
+        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
+        A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
+        # A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
+        # A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.2),
+        A.Rotate(limit=30, border_mode=cv2.BORDER_REFLECT, p=0.4),
+        A.RandomResizedCrop(size=(cfg.IMG_SIZE, cfg.IMG_SIZE), scale=(0.85, 1.0), ratio=(0.95, 1.05), p=0.3),
+        A.OneOf([
+            A.ElasticTransform(alpha=10, sigma=4, alpha_affine=3, border_mode=cv2.BORDER_REFLECT, p=1.0),
+            A.GridDistortion(num_steps=5, distort_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
+            A.OpticalDistortion(distort_limit=0.07, shift_limit=0.07, border_mode=cv2.BORDER_REFLECT, p=1.0),
+        ], p=0.15),
+        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.08, p=0.4),
+        A.HueSaturationValue(hue_shift_limit=8, sat_shift_limit=15, val_shift_limit=10, p=0.25),
+        A.OneOf([
+            A.GaussNoise(var_limit=(3.0, 12.0), p=1.0),
+            A.GaussianBlur(blur_limit=(3, 3), p=1.0),
+            A.MedianBlur(blur_limit=3, p=1.0),
+        ], p=0.25),
+        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ToTensorV2(),
+    ])
 
 
-# def get_val_transform():
-#     return A.Compose([
-#         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-#         A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
-#         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-#         ToTensorV2(),
-#     ])
+def get_val_transform():
+    return A.Compose([
+        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
+        # A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=1.0),
+        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ToTensorV2(),
+    ])
 
 
 def train_mini_transform():
@@ -185,106 +185,106 @@ def get_val_transform_hoptimus():
 
 
 
-T = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Lambda(lambda x: x * 255)
-])
+# T = transforms.Compose([
+#     transforms.ToTensor(),
+#     transforms.Lambda(lambda x: x * 255)
+# ])
 
-normalizer = torchstain.normalizers.MacenkoNormalizer(backend="torch")
+# normalizer = torchstain.normalizers.MacenkoNormalizer(backend="torch")
 
-phase1_imgs = sorted(os.listdir("../data/phase1"))
-sample_imgs = random.sample(phase1_imgs, 30)
+# phase1_imgs = sorted(os.listdir("../data/phase1"))
+# sample_imgs = random.sample(phase1_imgs, 30)
 
-for img_name in sample_imgs:
-    img = cv2.cvtColor(
-        cv2.imread(f"../data/phase1/{img_name}"),
-        cv2.COLOR_BGR2RGB
-    )
-    normalizer.fit(T(img))
+# for img_name in sample_imgs:
+#     img = cv2.cvtColor(
+#         cv2.imread(f"../data/phase1/{img_name}"),
+#         cv2.COLOR_BGR2RGB
+#     )
+#     normalizer.fit(T(img))
     
 
-def macenko_normalize_tensor(img_tensor):
-    if not torch.is_tensor(img_tensor):
-        img_tensor = torch.as_tensor(img_tensor)
+# def macenko_normalize_tensor(img_tensor):
+#     if not torch.is_tensor(img_tensor):
+#         img_tensor = torch.as_tensor(img_tensor)
 
-    # After ToTensorV2 it's already (C,H,W)
-    if img_tensor.ndim == 3 and img_tensor.shape[0] != 3:
-        img_tensor = img_tensor.permute(2, 0, 1)
+#     # After ToTensorV2 it's already (C,H,W)
+#     if img_tensor.ndim == 3 and img_tensor.shape[0] != 3:
+#         img_tensor = img_tensor.permute(2, 0, 1)
 
-    device = img_tensor.device
-    img_tensor = img_tensor.float()
+#     device = img_tensor.device
+#     img_tensor = img_tensor.float()
 
-    mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(3, 1, 1)
-    std  = torch.tensor([0.229, 0.224, 0.225], device=device).view(3, 1, 1)
+#     mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(3, 1, 1)
+#     std  = torch.tensor([0.229, 0.224, 0.225], device=device).view(3, 1, 1)
 
-    # Undo ImageNet norm → [0,255]
-    img = (img_tensor * std + mean) * 255.0
+#     # Undo ImageNet norm → [0,255]
+#     img = (img_tensor * std + mean) * 255.0
 
-    try:
-        img_norm, _, _ = normalizer.normalize(I=img)
-    except Exception:
-        # Macenko can fail on edge-case images (very dark, almost uniform)
-        return img_tensor  # fall back to unnormalized
+#     try:
+#         img_norm, _, _ = normalizer.normalize(I=img)
+#     except Exception:
+#         # Macenko can fail on edge-case images (very dark, almost uniform)
+#         return img_tensor  # fall back to unnormalized
 
-    # ← Fix: normalizer returns (H,W,C), permute to (C,H,W)
-    if img_norm.ndim == 3 and img_norm.shape[0] != 3:
-        img_norm = img_norm.permute(2, 0, 1)
+#     # ← Fix: normalizer returns (H,W,C), permute to (C,H,W)
+#     if img_norm.ndim == 3 and img_norm.shape[0] != 3:
+#         img_norm = img_norm.permute(2, 0, 1)
 
-    img_norm = (img_norm.float() / 255.0 - mean) / std
-    return img_norm
+#     img_norm = (img_norm.float() / 255.0 - mean) / std
+#     return img_norm
 
-def get_train_transform():
-    return A.Compose([
-        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
+# def get_train_transform():
+#     return A.Compose([
+#         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
 
-        # Geometry (safe + effective)
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.2),
-        A.Rotate(limit=30, border_mode=cv2.BORDER_REFLECT, p=0.4),
-        A.RandomResizedCrop(
-            size=(cfg.IMG_SIZE, cfg.IMG_SIZE),
-            scale=(0.85, 1.0),
-            ratio=(0.95, 1.05),
-            p=0.3
-        ),
+#         # Geometry (safe + effective)
+#         A.HorizontalFlip(p=0.5),
+#         A.VerticalFlip(p=0.2),
+#         A.Rotate(limit=30, border_mode=cv2.BORDER_REFLECT, p=0.4),
+#         A.RandomResizedCrop(
+#             size=(cfg.IMG_SIZE, cfg.IMG_SIZE),
+#             scale=(0.85, 1.0),
+#             ratio=(0.95, 1.05),
+#             p=0.3
+#         ),
 
-        # Mild blur / noise only
-        A.OneOf([
-            A.GaussNoise(var_limit=(3.0, 12.0)),
-            A.GaussianBlur(blur_limit=3),
-        ], p=0.2),
+#         # Mild blur / noise only
+#         A.OneOf([
+#             A.GaussNoise(var_limit=(3.0, 12.0)),
+#             A.GaussianBlur(blur_limit=3),
+#         ], p=0.2),
 
-        # Standard normalization
-        A.Normalize(
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225)
-        ),
-        ToTensorV2(),
+#         # Standard normalization
+#         A.Normalize(
+#             mean=(0.485, 0.456, 0.406),
+#             std=(0.229, 0.224, 0.225)
+#         ),
+#         ToTensorV2(),
 
-        # 🔥 Stain normalization / augmentation
-        A.Lambda(
-            image=lambda x, **k: macenko_normalize_tensor(x),
-            p=0.7
-        ),
-    ])
+#         # 🔥 Stain normalization / augmentation
+#         A.Lambda(
+#             image=lambda x, **k: macenko_normalize_tensor(x),
+#             p=0.7
+#         ),
+#     ])
     
 
-def get_val_transform():
-    return A.Compose([
-        A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
+# def get_val_transform():
+#     return A.Compose([
+#         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
 
-        A.Normalize(
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225)
-        ),
-        ToTensorV2(),
+#         A.Normalize(
+#             mean=(0.485, 0.456, 0.406),
+#             std=(0.229, 0.224, 0.225)
+#         ),
+#         ToTensorV2(),
 
-        # Always normalize stains in validation
-        A.Lambda(
-            image=lambda x, **k: macenko_normalize_tensor(x),
-            p=1.0
-        ),
-    ])
+#         # Always normalize stains in validation
+#         A.Lambda(
+#             image=lambda x, **k: macenko_normalize_tensor(x),
+#             p=1.0
+#         ),
+#     ])
 
 # ============================================================================
 # DATASET
@@ -299,34 +299,34 @@ class BloodDataset(Dataset):
     def __len__(self):
         return len(self.df)
 
-    # def __getitem__(self, idx):
-    #     row = self.df.iloc[idx]
-    #     img_path = os.path.join(row["img_dir"], row["filename"])
-    #     image = np.array(Image.open(img_path).convert("RGB")) if isinstance(self.transform, A.Compose) else  Image.open(img_path).convert("RGB")
-
-    #     if self.transform:
-    #         # image = self.transform(image=image)["image"]
-    #         image = self.transform(image)["image"] if isinstance(self.transform, A.Compose) else self.transform(image)
-
-    #     if self.is_test:
-    #         return image, row["filename"]
-
-    #     label = torch.tensor(row["label_id"], dtype=torch.long)
-    #     return image, label
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         img_path = os.path.join(row["img_dir"], row["filename"])
+        image = np.array(Image.open(img_path).convert("RGB")) if isinstance(self.transform, A.Compose) else  Image.open(img_path).convert("RGB")
 
-        image = np.array(Image.open(img_path).convert("RGB"))
-
-        if self.transform is not None:
-            if isinstance(self.transform, A.Compose):
-                image = self.transform(image=image)["image"]
-            else:
-                image = self.transform(image)
+        if self.transform:
+            # image = self.transform(image=image)["image"]
+            image = self.transform(image)["image"] if isinstance(self.transform, A.Compose) else self.transform(image)
 
         if self.is_test:
             return image, row["filename"]
 
         label = torch.tensor(row["label_id"], dtype=torch.long)
         return image, label
+    # def __getitem__(self, idx):
+    #     row = self.df.iloc[idx]
+    #     img_path = os.path.join(row["img_dir"], row["filename"])
+
+    #     image = np.array(Image.open(img_path).convert("RGB"))
+
+    #     if self.transform is not None:
+    #         if isinstance(self.transform, A.Compose):
+    #             image = self.transform(image=image)["image"]
+    #         else:
+    #             image = self.transform(image)
+
+    #     if self.is_test:
+    #         return image, row["filename"]
+
+    #     label = torch.tensor(row["label_id"], dtype=torch.long)
+    #     return image, label
