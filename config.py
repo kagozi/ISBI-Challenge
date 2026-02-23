@@ -38,7 +38,7 @@ class Config:
     # Model configs to train
     
     # ── New: SWA settings ──────────────────────────────────────────────────
-    USE_SWA = False 
+    USE_SWA = True 
     # SWA kicks in after this fraction of epochs (e.g. 0.75 = last 25%)
     SWA_START_RATIO = 0.75
     SWA_LR = 1e-5          # low lr for SWA averaging phase

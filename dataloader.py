@@ -15,7 +15,7 @@ from torchvision import transforms
 import random
 import torchstain
 from config import Config
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+# ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 cfg = Config()
 # ============================================================================
@@ -306,7 +306,7 @@ class BloodDataset(Dataset):
 
         if self.transform:
             # image = self.transform(image=image)["image"]
-            image = self.transform(image)["image"] if isinstance(self.transform, A.Compose) else self.transform(image)
+            image = self.transform(image=image)["image"] if isinstance(self.transform, A.Compose) else self.transform(image)
 
         if self.is_test:
             return image, row["filename"]
