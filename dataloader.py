@@ -92,7 +92,7 @@ def morphology_on_lab_l(image):
 def get_train_transform():
     return A.Compose([
         A.Resize(cfg.IMG_SIZE, cfg.IMG_SIZE),
-        A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
+        # A.Lambda(image=lambda x, **k: cv2.bilateralFilter(x, 7, 50, 50), p=0.5),
         # A.Lambda(image=lambda x, **k: advanced_clahe_preprocessing(x), p=0.7),
         # A.Lambda(image=lambda x, **k: morphology_on_lab_l(x), p=0.15),
         A.HorizontalFlip(p=0.5),
@@ -125,25 +125,7 @@ def get_val_transform():
     ])
 
 
-def train_mini_transform():
-    return transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(30),
-        transforms.RandomAffine(degrees=0, shear=15, scale=(0.8, 1.2)),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    
-def val_mini_transform():
-    return transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+
 
 
 # H-Optimus-1 uses its own normalization constants

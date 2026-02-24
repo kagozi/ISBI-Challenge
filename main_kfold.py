@@ -34,8 +34,7 @@ warnings.filterwarnings('ignore')
 from config import Config
 from dataloader import (load_data, BloodDataset,
                         get_train_transform, get_val_transform,
-                        get_train_transform_hoptimus, get_val_transform_hoptimus,
-                        val_mini_transform, train_mini_transform)
+                        get_train_transform_hoptimus, get_val_transform_hoptimus)
 
 cfg = Config()
 
