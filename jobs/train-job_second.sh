@@ -3,8 +3,8 @@
 # GPU job submission script for SLURM
 ### Job Configuration #########################################################
 
-#SBATCH --job-name=vit-no-clahe-train
-#SBATCH --output=vit-no-clahe-%j.out
+#SBATCH --job-name=swin_focal-no-clahe-train
+#SBATCH --output=swin_focal-no-clahe-%j.out
 
 #SBATCH --get-user-env
 
