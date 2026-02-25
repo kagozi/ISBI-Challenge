@@ -22,7 +22,50 @@ cfg = Config()
 # DATA LOADING
 # ============================================================================
 
-def load_data(data_path):
+# def load_data(data_path):
+#     PHASE1_IMG_DIR = os.path.join(data_path, "phase1")
+#     PHASE2_TRAIN_IMG_DIR = os.path.join(data_path, "phase2/train")
+#     PHASE2_EVAL_IMG_DIR = os.path.join(data_path, "phase2/eval")
+#     PHASE2_TEST_IMG_DIR = os.path.join(data_path, "phase2/test")
+
+#     def clean_df(df):
+#         df = df.drop(columns=[c for c in df.columns if c.startswith("Unnamed")], errors="ignore")
+#         df = df.rename(columns={"ID": "filename", "labels": "label"})
+#         return df
+
+#     phase1_df = clean_df(pd.read_csv(os.path.join(data_path, "phase1_label.csv")))
+#     phase2_train_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_train.csv")))
+#     phase2_eval_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_eval.csv")))
+#     phase2_test_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_test.csv")))
+
+#     phase1_df["img_dir"] = PHASE1_IMG_DIR
+#     phase2_train_df["img_dir"] = PHASE2_TRAIN_IMG_DIR
+#     phase2_eval_df["img_dir"] = PHASE2_EVAL_IMG_DIR
+#     phase2_test_df["img_dir"] = PHASE2_TEST_IMG_DIR
+
+#     # Combine all labeled data
+#     train_df = pd.concat([phase1_df, phase2_train_df, phase2_eval_df], ignore_index=True)
+#     test_df = phase2_test_df.copy()
+
+#     # Class mapping
+#     class_names = sorted(train_df["label"].unique())
+#     num_classes = len(class_names)
+#     label2name = dict(zip(range(num_classes), class_names))
+#     name2label = {v: k for k, v in label2name.items()}
+
+#     train_df["label_id"] = train_df["label"].map(name2label)
+#     test_df["label_id"] = -1
+
+#     print(f"\n{'='*70}")
+#     print(f"DATA SUMMARY")
+#     print(f"{'='*70}")
+#     print(f"Total training samples: {len(train_df):,}")
+#     print(f"Test samples:           {len(test_df):,}")
+#     print(f"Classes ({num_classes}): {class_names}")
+#     print(f"{'='*70}\n")
+
+#     return train_df, test_df, class_names, num_classes, label2name, name2label
+def load_data(data_path, extra_data_path=None):
     PHASE1_IMG_DIR = os.path.join(data_path, "phase1")
     PHASE2_TRAIN_IMG_DIR = os.path.join(data_path, "phase2/train")
     PHASE2_EVAL_IMG_DIR = os.path.join(data_path, "phase2/eval")
@@ -43,11 +86,52 @@ def load_data(data_path):
     phase2_eval_df["img_dir"] = PHASE2_EVAL_IMG_DIR
     phase2_test_df["img_dir"] = PHASE2_TEST_IMG_DIR
 
-    # Combine all labeled data
     train_df = pd.concat([phase1_df, phase2_train_df, phase2_eval_df], ignore_index=True)
     test_df = phase2_test_df.copy()
 
-    # Class mapping
+    # ── Dataset 2 integration ─────────────────────────────────────────────
+    # Maps Dataset 2 folder names → Dataset 1 label codes
+    DATASET2_LABEL_MAP = {
+        'basophil':   'BA',
+        'eosinophil': 'EO',
+        'lymphocyte': 'LY',
+        'monocyte':   'MO',
+    }
+    # Folders we explicitly skip (no compatible class in Dataset 1)
+    DATASET2_SKIP = {'erythroblast', 'ig', 'neutrophil', 'platelet'}
+
+    if extra_data_path is not None and os.path.isdir(extra_data_path):
+        extra_rows = []
+        for folder_name in sorted(os.listdir(extra_data_path)):
+            folder_path = os.path.join(extra_data_path, folder_name)
+            if not os.path.isdir(folder_path):
+                continue
+            if folder_name in DATASET2_SKIP:
+                print(f"  ⏭  Skipping Dataset 2 class '{folder_name}' (no compatible mapping)")
+                continue
+            if folder_name not in DATASET2_LABEL_MAP:
+                print(f"  ⚠️  Unknown Dataset 2 class '{folder_name}', skipping")
+                continue
+
+            target_label = DATASET2_LABEL_MAP[folder_name]
+            images = [f for f in os.listdir(folder_path)
+                      if f.lower().endswith((".png", ".jpg", ".jpeg"))]
+
+            for fname in images:
+                extra_rows.append({
+                    "filename": fname,
+                    "label":    target_label,
+                    "img_dir":  folder_path,
+                })
+
+            print(f"  ✓  '{folder_name}' → '{target_label}': {len(images):,} images added")
+
+        if extra_rows:
+            extra_df = pd.DataFrame(extra_rows)
+            train_df = pd.concat([train_df, extra_df], ignore_index=True)
+            print(f"\n  Dataset 2 total added: {len(extra_rows):,} images\n")
+
+    # ── Class mapping (built after all data is merged) ────────────────────
     class_names = sorted(train_df["label"].unique())
     num_classes = len(class_names)
     label2name = dict(zip(range(num_classes), class_names))
@@ -62,10 +146,13 @@ def load_data(data_path):
     print(f"Total training samples: {len(train_df):,}")
     print(f"Test samples:           {len(test_df):,}")
     print(f"Classes ({num_classes}): {class_names}")
+    # Show per-class counts so you can see the balance effect
+    counts = train_df["label"].value_counts().sort_index()
+    for cls, cnt in counts.items():
+        print(f"  {cls:<6} {cnt:>6,}")
     print(f"{'='*70}\n")
 
     return train_df, test_df, class_names, num_classes, label2name, name2label
-
 
 # ============================================================================
 # TRANSFORMS

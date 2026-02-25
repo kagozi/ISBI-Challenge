@@ -8,6 +8,7 @@ import os
 import argparse
 class Config:
     DATA_PATH = '../data'
+    EXTRA_DATA_PATH = '../bloodcells_dataset'
     N_FOLDS = 5
     SEED = 42
     IMG_SIZE = 224
@@ -61,13 +62,13 @@ class Config:
 
                 
 
-        # {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
+        {'model': 'EfficientNet',     'loss': 'ce',             'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         # {'model': 'EfficientNet',     'loss': 'focal',          'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'EfficientNet',     'loss': 'focal_weighted', 'lr': 1e-4, 'epochs': 30, 'weight_decay': 1e-4},
         
         
     #    {'model': 'HybridSwin',      'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
-        {'model': 'HybridSwin',      'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
+        # {'model': 'HybridSwin',      'loss': 'focal',          'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
     #     {'model': 'HybridSwin',      'loss': 'focal_weighted', 'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},
         
         # {'model': 'ViT',             'loss': 'ce',             'lr': 5e-5, 'epochs': 30, 'weight_decay': 1e-4},

@@ -34,8 +34,7 @@ warnings.filterwarnings('ignore')
 from config import Config
 from dataloader import (load_data, BloodDataset,
                         get_train_transform, get_val_transform,
-                        get_train_transform_hoptimus, get_val_transform_hoptimus,
-)
+                        get_train_transform_hoptimus, get_val_transform_hoptimus)
 
 cfg = Config()
 
@@ -217,10 +216,7 @@ def main(config_idx: int | None = None):
 
     configs = [cfg.CONFIGS[config_idx]] if config_idx is not None else cfg.CONFIGS
 
-    # train_df, test_df, class_names, num_classes, label2name, name2label = load_data(cfg.DATA_PATH)
-    train_df, test_df, class_names, num_classes, label2name, name2label = load_data(
-    cfg.DATA_PATH,
-    extra_data_path="../blood_dataset")  # Load extra data and combine with original train_df
+    train_df, test_df, class_names, num_classes, label2name, name2label = load_data(cfg.DATA_PATH)
     class_weights = compute_custom_class_weights(num_classes, name2label, cfg.DEVICE)
 
     skf = StratifiedKFold(n_splits=cfg.N_FOLDS, shuffle=True, random_state=cfg.SEED)
