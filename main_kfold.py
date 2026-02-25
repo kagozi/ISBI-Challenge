@@ -220,7 +220,7 @@ def main(config_idx: int | None = None):
     # train_df, test_df, class_names, num_classes, label2name, name2label = load_data(cfg.DATA_PATH)
     train_df, test_df, class_names, num_classes, label2name, name2label = load_data(
     cfg.DATA_PATH,
-    extra_data_path="../blood_dataset")  # Load extra data and combine with original train_df
+    extra_data_path=cfg.EXTRA_DATA_PATH)  # Load extra data and combine with original train_df
     class_weights = compute_custom_class_weights(num_classes, name2label, cfg.DEVICE)
 
     skf = StratifiedKFold(n_splits=cfg.N_FOLDS, shuffle=True, random_state=cfg.SEED)

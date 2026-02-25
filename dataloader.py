@@ -66,6 +66,7 @@ cfg = Config()
 
 #     return train_df, test_df, class_names, num_classes, label2name, name2label
 def load_data(data_path, extra_data_path=None):
+    print(f"Loading data from: {extra_data_path}")
     PHASE1_IMG_DIR = os.path.join(data_path, "phase1")
     PHASE2_TRAIN_IMG_DIR = os.path.join(data_path, "phase2/train")
     PHASE2_EVAL_IMG_DIR = os.path.join(data_path, "phase2/eval")
