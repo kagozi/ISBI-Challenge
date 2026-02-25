@@ -173,55 +173,97 @@ def predict_proba_with_tta(model, images, device, n_tta=5):
 # TRAINING FUNCTIONS
 # ============================================================================
 
-def train_one_epoch(model, loader, criterion, optimizer, device, epoch,
-                    total_epochs=None, use_mixup=True):
+def train_one_epoch(
+    model,
+    loader,
+    criterion,
+    optimizer,
+    device,
+    epoch,
+    use_mixup=True,
+    grad_accum_steps: int = 2,
+    amp: bool = True,
+):
     """
-    Args:
-        total_epochs: if provided, mixup is disabled after cfg.MIXUP_END_RATIO * total_epochs
+    One training epoch with:
+      - AMP (autocast + GradScaler) for lower VRAM
+      - optional gradient accumulation (grad_accum_steps >= 1)
+      - mixup support
+
+    Notes:
+      - When mixup is used, metrics computed on labels_a are only an approximation.
     """
     model.train()
     running_loss = 0.0
     all_preds, all_labels = [], []
 
-    # ── Disable mixup in the later epochs so the model learns clean boundaries ──
-    mixup_active = use_mixup
-    if use_mixup and total_epochs is not None:
-        mixup_active = epoch <= int(total_epochs * cfg.MIXUP_END_RATIO)
-
-    # ── Proper AMP: scaler + autocast together ─────────────────────────────
-    use_amp = (device == "cuda")
+    use_amp = amp and (device == "cuda")
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
-    pbar = tqdm(loader, desc=f"  Epoch {epoch} [TRAIN]", leave=False)
-    for images, labels in pbar:
-        images, labels = images.to(device), labels.to(device)
-        optimizer.zero_grad()
+    grad_accum_steps = max(1, int(grad_accum_steps))
+    optimizer.zero_grad(set_to_none=True)
 
-        if mixup_active and np.random.rand() > 0.5:
+    pbar = tqdm(loader, desc=f"  Epoch {epoch} [TRAIN]", leave=False)
+
+    for step, (images, labels) in enumerate(pbar, start=1):
+        images = images.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
+
+        do_mixup = use_mixup and (np.random.rand() > 0.5)
+
+        if do_mixup:
             images, labels_a, labels_b, lam = mixup_data(images, labels, alpha=0.2)
+
             with torch.cuda.amp.autocast(enabled=use_amp):
                 outputs = model(images)
                 loss = mixup_criterion(criterion, outputs, labels_a, labels_b, lam)
+
             preds = outputs.argmax(dim=1)
             all_preds.extend(preds.detach().cpu().numpy())
-            all_labels.extend(labels_a.cpu().numpy())
+            all_labels.extend(labels_a.detach().cpu().numpy())  # proxy metric target
         else:
             with torch.cuda.amp.autocast(enabled=use_amp):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
+
             preds = outputs.argmax(dim=1)
             all_preds.extend(preds.detach().cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
+            all_labels.extend(labels.detach().cpu().numpy())
 
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        # Normalize loss for grad accumulation
+        loss_to_backprop = loss / grad_accum_steps
+
+        if use_amp:
+            scaler.scale(loss_to_backprop).backward()
+        else:
+            loss_to_backprop.backward()
+
+        # Step optimizer every grad_accum_steps
+        if (step % grad_accum_steps) == 0:
+            if use_amp:
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+
         running_loss += loss.item()
-        pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+        pbar.set_postfix({'loss': f'{loss.item():.4f}', 'amp': use_amp, 'accum': grad_accum_steps})
 
-    return (running_loss / len(loader),
-            accuracy_score(all_labels, all_preds),
-            f1_score(all_labels, all_preds, average='macro'))
+    # If loader length isn't divisible by grad_accum_steps, flush last partial grads
+    remainder = len(loader) % grad_accum_steps
+    if remainder != 0:
+        if use_amp:
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+
+    avg_loss = running_loss / max(1, len(loader))
+    acc = accuracy_score(all_labels, all_preds) if all_labels else 0.0
+    f1 = f1_score(all_labels, all_preds, average='macro') if all_labels else 0.0
+    return avg_loss, acc, f1
 
 
 def validate_one_epoch(model, loader, criterion, device, epoch):

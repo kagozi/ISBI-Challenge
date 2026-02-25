@@ -65,40 +65,39 @@ cfg = Config()
 #     print(f"{'='*70}\n")
 
 #     return train_df, test_df, class_names, num_classes, label2name, name2label
-def load_data(data_path, extra_data_path=None):
-    print(f"Loading data from: {extra_data_path}")
-    PHASE1_IMG_DIR = os.path.join(data_path, "phase1")
-    PHASE2_TRAIN_IMG_DIR = os.path.join(data_path, "phase2/train")
-    PHASE2_EVAL_IMG_DIR = os.path.join(data_path, "phase2/eval")
-    PHASE2_TEST_IMG_DIR = os.path.join(data_path, "phase2/test")
+
+
+def load_data(data_path, extra_data_path=None, dataset_three_path=None):
+    PHASE1_IMG_DIR        = os.path.join(data_path, "phase1")
+    PHASE2_TRAIN_IMG_DIR  = os.path.join(data_path, "phase2/train")
+    PHASE2_EVAL_IMG_DIR   = os.path.join(data_path, "phase2/eval")
+    PHASE2_TEST_IMG_DIR   = os.path.join(data_path, "phase2/test")
 
     def clean_df(df):
         df = df.drop(columns=[c for c in df.columns if c.startswith("Unnamed")], errors="ignore")
         df = df.rename(columns={"ID": "filename", "labels": "label"})
         return df
 
-    phase1_df = clean_df(pd.read_csv(os.path.join(data_path, "phase1_label.csv")))
+    phase1_df       = clean_df(pd.read_csv(os.path.join(data_path, "phase1_label.csv")))
     phase2_train_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_train.csv")))
-    phase2_eval_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_eval.csv")))
-    phase2_test_df = clean_df(pd.read_csv(os.path.join(data_path, "phase2_test.csv")))
+    phase2_eval_df  = clean_df(pd.read_csv(os.path.join(data_path, "phase2_eval.csv")))
+    phase2_test_df  = clean_df(pd.read_csv(os.path.join(data_path, "phase2_test.csv")))
 
-    phase1_df["img_dir"] = PHASE1_IMG_DIR
+    phase1_df["img_dir"]       = PHASE1_IMG_DIR
     phase2_train_df["img_dir"] = PHASE2_TRAIN_IMG_DIR
-    phase2_eval_df["img_dir"] = PHASE2_EVAL_IMG_DIR
-    phase2_test_df["img_dir"] = PHASE2_TEST_IMG_DIR
+    phase2_eval_df["img_dir"]  = PHASE2_EVAL_IMG_DIR
+    phase2_test_df["img_dir"]  = PHASE2_TEST_IMG_DIR
 
     train_df = pd.concat([phase1_df, phase2_train_df, phase2_eval_df], ignore_index=True)
-    test_df = phase2_test_df.copy()
+    test_df  = phase2_test_df.copy()
 
-    # ── Dataset 2 integration ─────────────────────────────────────────────
-    # Maps Dataset 2 folder names → Dataset 1 label codes
+    # ── Dataset 2 (PBC folder-based) ──────────────────────────────────────
     DATASET2_LABEL_MAP = {
         'basophil':   'BA',
         'eosinophil': 'EO',
         'lymphocyte': 'LY',
         'monocyte':   'MO',
     }
-    # Folders we explicitly skip (no compatible class in Dataset 1)
     DATASET2_SKIP = {'erythroblast', 'ig', 'neutrophil', 'platelet'}
 
     if extra_data_path is not None and os.path.isdir(extra_data_path):
@@ -108,38 +107,91 @@ def load_data(data_path, extra_data_path=None):
             if not os.path.isdir(folder_path):
                 continue
             if folder_name in DATASET2_SKIP:
-                print(f"  ⏭  Skipping Dataset 2 class '{folder_name}' (no compatible mapping)")
+                print(f"  ⏭  Skipping D2 '{folder_name}' (no compatible mapping)")
                 continue
             if folder_name not in DATASET2_LABEL_MAP:
-                print(f"  ⚠️  Unknown Dataset 2 class '{folder_name}', skipping")
+                print(f"  ⚠️  Unknown D2 class '{folder_name}', skipping")
                 continue
-
             target_label = DATASET2_LABEL_MAP[folder_name]
             images = [f for f in os.listdir(folder_path)
                       if f.lower().endswith((".png", ".jpg", ".jpeg"))]
-
             for fname in images:
-                extra_rows.append({
-                    "filename": fname,
-                    "label":    target_label,
-                    "img_dir":  folder_path,
-                })
-
-            print(f"  ✓  '{folder_name}' → '{target_label}': {len(images):,} images added")
-
+                extra_rows.append({"filename": fname, "label": target_label,
+                                   "img_dir": folder_path})
+            print(f"  ✓  D2 '{folder_name}' → '{target_label}': {len(images):,} images")
         if extra_rows:
-            extra_df = pd.DataFrame(extra_rows)
-            train_df = pd.concat([train_df, extra_df], ignore_index=True)
-            print(f"\n  Dataset 2 total added: {len(extra_rows):,} images\n")
+            train_df = pd.concat([train_df, pd.DataFrame(extra_rows)], ignore_index=True)
+            print(f"  D2 total added: {len(extra_rows):,}\n")
 
-    # ── Class mapping (built after all data is merged) ────────────────────
+    # ── Dataset 3 (Multi-Focus WBC, small classes only) ───────────────────
+    # Only take z-stack 4 (middle focus) — one image per cell, no redundancy
+    Z_STACK = 4
+
+    # immature_wbc skipped — ambiguous grouping of blast/myelocyte/metamyelocyte
+    # promyelocyte only has 24 rows but we take all of them
+    # blast already has 2,683 in D1 — still include to help with hard examples
+    DATASET3_LABEL_MAP = {
+        'metamyelocyte':      'MMY',
+        'myelocyte':          'MY',
+        'promyelocyte':       'PMY',
+        'band_neutrophil':    'BNE',
+        'blast':              'BL',
+        'abnormal_lymphocyte': 'VLY',
+    }
+    DATASET3_SKIP = {
+        'seg_neutrophil', 'lymphocyte', 'monocyte', 'eosinophil', 'basophil',
+        'immature_wbc', 'smudge', 'agg_plt', 'artifact', 'n_rbc', 'g_plt', 'unk_wbc'
+    }
+
+    if dataset_three_path is not None and os.path.isdir(dataset_three_path):
+        labels_df = pd.read_csv(os.path.join(dataset_three_path, "labels.csv"))
+
+        d3_rows = []
+        skipped_labels = set()
+
+        for _, row in labels_df.iterrows():
+            lbl = row['label']
+
+            if lbl in DATASET3_SKIP:
+                skipped_labels.add(lbl)
+                continue
+            if lbl not in DATASET3_LABEL_MAP:
+                print(f"  ⚠️  Unknown D3 label '{lbl}', skipping")
+                continue
+
+            fname = f"{int(row['img_num'])}_{Z_STACK}.jpg"
+            fpath = os.path.join(dataset_three_path, fname)
+
+            # Only add if file actually exists (sanity check)
+            if not os.path.exists(fpath):
+                continue
+
+            d3_rows.append({
+                "filename": fname,
+                "label":    DATASET3_LABEL_MAP[lbl],
+                "img_dir":  dataset_three_path,
+            })
+
+        if d3_rows:
+            d3_df = pd.DataFrame(d3_rows)
+            # Print per-class counts before merging
+            print(f"  Dataset 3 — using z-stack={Z_STACK} only (middle focus plane)")
+            for orig_lbl, d1_code in sorted(DATASET3_LABEL_MAP.items()):
+                count = (d3_df['label'] == d1_code).sum()
+                if count > 0:
+                    print(f"  ✓  D3 '{orig_lbl}' → '{d1_code}': {count:,} images")
+            print(f"  ⏭  Skipped D3 labels: {sorted(skipped_labels)}")
+            print(f"  D3 total added: {len(d3_rows):,}\n")
+            train_df = pd.concat([train_df, d3_df], ignore_index=True)
+
+    # ── Class mapping (built after all merges) ────────────────────────────
     class_names = sorted(train_df["label"].unique())
-    num_classes = len(class_names)
-    label2name = dict(zip(range(num_classes), class_names))
-    name2label = {v: k for k, v in label2name.items()}
+    num_classes  = len(class_names)
+    label2name   = dict(zip(range(num_classes), class_names))
+    name2label   = {v: k for k, v in label2name.items()}
 
     train_df["label_id"] = train_df["label"].map(name2label)
-    test_df["label_id"] = -1
+    test_df["label_id"]  = -1
 
     print(f"\n{'='*70}")
     print(f"DATA SUMMARY")
@@ -147,10 +199,9 @@ def load_data(data_path, extra_data_path=None):
     print(f"Total training samples: {len(train_df):,}")
     print(f"Test samples:           {len(test_df):,}")
     print(f"Classes ({num_classes}): {class_names}")
-    # Show per-class counts so you can see the balance effect
     counts = train_df["label"].value_counts().sort_index()
     for cls, cnt in counts.items():
-        print(f"  {cls:<6} {cnt:>6,}")
+        print(f"  {cls:<6} {cnt:>7,}")
     print(f"{'='*70}\n")
 
     return train_df, test_df, class_names, num_classes, label2name, name2label

@@ -3,8 +3,8 @@
 # GPU job submission script for SLURM
 ### Job Configuration #########################################################
 
-#SBATCH --job-name=efficientnet_ce-no-clahe-train
-#SBATCH --output=efficientnet_ce-no-clahe-%j.out
+#SBATCH --job-name=hybridswin_ce-no-clahe-train
+#SBATCH --output=hybridswin_ce-no-clahe-%j.out
 
 #SBATCH --get-user-env
 
