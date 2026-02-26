@@ -127,58 +127,51 @@ def train_kfold(config, train_df, test_df, num_classes, class_weights,
         model_path  = os.path.join(cfg.SAVE_DIR, f"{config_key}_fold{fold_num}.pth")
 
         # ── Training loop ─────────────────────────────────────────────────
-        for epoch in range(1, n_epochs + 1):
+        for epoch in range(1, config['epochs'] + 1):
             train_loss, train_acc, train_f1 = train_one_epoch(
-                model, fold_train_loader, criterion, optimizer, device,
-                epoch, total_epochs=n_epochs)
-
-            # Standard val on the base model (gives informative per-epoch signal)
+                model, fold_train_loader, criterion, optimizer, device, epoch)
             val_loss, val_acc, val_f1, _, _ = validate_one_epoch(
                 model, fold_val_loader, criterion, device, epoch)
+            scheduler.step()
 
-            # ── Scheduler step ───────────────────────────────────────────
-            if cfg.USE_SWA and epoch >= swa_start_epoch:
-                swa_model.update_parameters(model)
-                swa_scheduler.step()
-            else:
-                scheduler.step()
+            if epoch % 5 == 0 or epoch == config['epochs']:
+                print(f"    Ep {epoch:2d}/{config['epochs']} | "
+                      f"Train F1: {train_f1:.4f} | Val F1: {val_f1:.4f} | Val Acc: {val_acc:.4f}")
 
-            if epoch % 5 == 0 or epoch == n_epochs:
-                swa_tag = " [SWA]" if cfg.USE_SWA and epoch >= swa_start_epoch else ""
-                print(f"    Ep {epoch:2d}/{n_epochs}{swa_tag} | "
-                      f"Train F1: {train_f1:.4f} | Val F1: {val_f1:.4f} | "
-                      f"Val Acc: {val_acc:.4f}")
-
-            # Save best base-model checkpoint (used if SWA is off)
             if val_f1 > best_val_f1:
                 best_val_f1 = val_f1
-                torch.save({'model_state_dict': model.state_dict(),
-                            'epoch': epoch, 'fold': fold_num, 'val_f1': val_f1},
-                           model_path)
+                torch.save({'model_state_dict': model.state_dict(), 'epoch': epoch,
+                             'fold': fold_num, 'val_f1': val_f1}, model_path)
 
-        print(f"  ✓ Fold {fold_num} best base Val F1: {best_val_f1:.4f}")
+        print(f"  ✓ Fold {fold_num} best Val F1: {best_val_f1:.4f}")
         fold_metrics.append(best_val_f1)
 
         # ── Pick the inference model ──────────────────────────────────────
-        if cfg.USE_SWA:
-            # Finalise SWA: update BatchNorm running stats with training data
-            print(f"  Updating BN stats for SWA model…")
-            update_bn(fold_train_loader, swa_model, device=device)
-            inference_model = swa_model
-        else:
-            checkpoint = torch.load(model_path, map_location=device)
-            model.load_state_dict(checkpoint['model_state_dict'])
-            inference_model = model
+        # if cfg.USE_SWA:
+        #     # Finalise SWA: update BatchNorm running stats with training data
+        #     print(f"  Updating BN stats for SWA model…")
+        #     update_bn(fold_train_loader, swa_model, device=device)
+        #     inference_model = swa_model
+        # else:
+        #     checkpoint = torch.load(model_path, map_location=device)
+        #     model.load_state_dict(checkpoint['model_state_dict'])
+        #     inference_model = model
+            # Load best model for this fold
+        checkpoint = torch.load(model_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
 
-        inference_model.eval()
+        # Load best model for this fold
+        checkpoint = torch.load(model_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
 
-        # ── OOF & test predictions ────────────────────────────────────────
-        oof_fold_probs = extract_oof_probabilities(
-            inference_model, fold_val_loader, device, n_tta=5)
+        # Extract OOF predictions for validation fold
+        oof_fold_probs = extract_oof_probabilities(model, fold_val_loader, device, n_tta=5)
         oof_probs[val_indices] = oof_fold_probs
 
-        test_fold_probs, test_fnames = extract_test_probabilities(
-            inference_model, test_loader, device, n_tta=5)
+        # Extract test predictions for this fold
+        test_fold_probs, test_fnames = extract_test_probabilities(model, test_loader, device, n_tta=5)
         if test_probs_sum is None:
             test_probs_sum = test_fold_probs
             test_filenames = test_fnames
@@ -187,10 +180,9 @@ def train_kfold(config, train_df, test_df, num_classes, class_weights,
 
         # Free memory
         del model, optimizer, scheduler, criterion
-        if cfg.USE_SWA:
-            del swa_model, swa_scheduler
         torch.cuda.empty_cache()
 
+    # Average test predictions across folds
     test_probs_avg = test_probs_sum / cfg.N_FOLDS
 
     mean_f1 = np.mean(fold_metrics)
