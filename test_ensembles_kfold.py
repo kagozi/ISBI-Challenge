@@ -81,7 +81,12 @@ def main():
         'HOptimus1_ce', 'HOptimus1_focal', 'HOptimus1_focal_weighted',
         'ViT_ce', 'ViT_focal', 'ViT_focal_weighted',
     ]
-
+    new_model_configs = [
+        'EfficientNet_ce',
+        'EfficientNet_focal',
+        # ... new models
+    ]
+    model_configs = new_model_configs 
     for config_key in model_configs:
         oof_path = os.path.join(cfg.OOF_DIR, f'oof_{config_key}.csv')
         test_path = os.path.join(cfg.TEST_PRED_DIR, f'test_{config_key}.csv')
